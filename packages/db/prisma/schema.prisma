@@ -1,0 +1,620 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  LOCKED
+  DISABLED
+}
+
+enum RoleName {
+  PlatformAdmin
+  BankAdmin
+  BranchManager
+  Teller
+  LoanOfficer
+  Auditor
+  Customer
+}
+
+enum AuditorScope {
+  PLATFORM
+  BANK
+}
+
+enum BankStatus {
+  ACTIVE
+  PAUSED
+}
+
+enum AccountStatus {
+  ACTIVE
+  FROZEN
+  CLOSED
+}
+
+enum LedgerAccountType {
+  ASSET
+  LIABILITY
+  INCOME
+  EXPENSE
+  EQUITY
+}
+
+enum JournalEntryType {
+  DEPOSIT
+  WITHDRAWAL
+  TRANSFER
+  INTERBANK_TRANSFER
+  WELCOME_BONUS
+  LOAN_DISBURSEMENT
+  LOAN_REPAYMENT
+  REVERSAL
+}
+
+enum TransactionStatus {
+  INITIATED
+  PENDING_APPROVAL
+  POSTED
+  REJECTED
+  FAILED
+  REVERSED
+}
+
+enum SettlementStatus {
+  NOT_REQUIRED
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
+}
+
+enum LoanApplicationStatus {
+  DRAFT
+  SUBMITTED
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  DISBURSED
+}
+
+enum KycStatus {
+  NOT_STARTED
+  SUBMITTED
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  NEEDS_MORE_INFO
+}
+
+enum KycReviewAction {
+  APPROVE
+  REJECT
+  REQUEST_INFO
+}
+
+enum NotificationType {
+  LOAN_APPLICATION_SUBMITTED
+  LOAN_APPLICATION_REVIEW
+  LOAN_APPROVED
+  LOAN_REJECTED
+  LIMIT_INCREASE_REQUEST
+  LIMIT_INCREASE_APPROVED
+  LIMIT_INCREASE_REJECTED
+  KYC_SUBMITTED
+  KYC_APPROVED
+  KYC_REJECTED
+  KYC_NEEDS_MORE_INFO
+  TRANSFER_PENDING_APPROVAL
+  TRANSFER_APPROVED
+  TRANSFER_REJECTED
+  TRANSFER_RECEIVED
+  TRANSACTION_ABOVE_THRESHOLD
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model Bank {
+  id        String     @id @default(uuid()) @db.Uuid
+  name      String
+  code      String     @unique
+  status    BankStatus @default(ACTIVE)
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  branches        Branch[]
+  userRoles       UserRole[]
+  customers       Customer[]
+  accountProducts AccountProduct[]
+  accounts        CustomerAccount[]
+  ledgerAccounts  LedgerAccount[]
+  journalEntries  JournalEntry[]
+  transactions    Transaction[]
+  loanProducts    LoanProduct[]
+  auditLogs       AuditLog[]
+  policies        BankPolicy?
+
+  @@map("banks")
+}
+
+model Branch {
+  id        String   @id @default(uuid()) @db.Uuid
+  bankId    String   @map("bank_id") @db.Uuid
+  name      String
+  ifscCode  String   @unique @map("ifsc_code")
+  address   String
+  city      String
+  state     String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  bank      Bank      @relation(fields: [bankId], references: [id], onDelete: Restrict)
+  userRoles UserRole[]
+  customers Customer[]
+  accounts  CustomerAccount[]
+
+  @@index([bankId])
+  @@map("branches")
+}
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  email        String     @unique
+  phone        String?    @unique
+  passwordHash String     @map("password_hash")
+  displayName  String     @map("display_name")
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  roles         UserRole[]
+  customers     Customer[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
+
+  @@map("users")
+}
+
+model UserRole {
+  id           String        @id @default(uuid()) @db.Uuid
+  userId       String        @map("user_id") @db.Uuid
+  role         RoleName
+  bankId       String?       @map("bank_id") @db.Uuid
+  branchId     String?       @map("branch_id") @db.Uuid
+  auditorScope AuditorScope? @map("auditor_scope")
+  createdAt    DateTime      @default(now()) @map("created_at")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  bank   Bank?   @relation(fields: [bankId], references: [id], onDelete: Restrict)
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([bankId])
+  @@map("user_roles")
+}
+
+model Customer {
+  id        String    @id @default(uuid()) @db.Uuid
+  bankId    String    @map("bank_id") @db.Uuid
+  branchId  String    @map("branch_id") @db.Uuid
+  userId    String?   @map("user_id") @db.Uuid
+  fullName  String    @map("full_name")
+  email     String
+  phone     String
+  dailyLimit Decimal  @default(50000) @map("daily_limit") @db.Decimal(18, 2)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  bank               Bank                  @relation(fields: [bankId], references: [id], onDelete: Restrict)
+  branch             Branch                @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  user               User?                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  accounts           CustomerAccount[]
+  kycCases           CustomerKyc[]
+  loanApplications   LoanApplication[]
+  loans              Loan[]
+  limitChangeRequests LimitChangeRequest[]
+  transferLimits     CustomerTransferLimit[]
+
+  @@unique([bankId, email])
+  @@unique([bankId, phone])
+  @@index([bankId, branchId])
+  @@map("customers")
+}
+
+model AccountProduct {
+  id        String   @id @default(uuid()) @db.Uuid
+  bankId    String   @map("bank_id") @db.Uuid
+  name      String
+  type      String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  bank     Bank              @relation(fields: [bankId], references: [id], onDelete: Restrict)
+  accounts CustomerAccount[]
+
+  @@unique([bankId, name])
+  @@map("account_products")
+}
+
+model CustomerAccount {
+  id              String        @id @default(uuid()) @db.Uuid
+  bankId          String        @map("bank_id") @db.Uuid
+  branchId        String        @map("branch_id") @db.Uuid
+  customerId      String        @map("customer_id") @db.Uuid
+  productId       String        @map("product_id") @db.Uuid
+  accountNumber   String        @map("account_number")
+  publicHandle    String?       @map("public_handle")
+  accountStatus   AccountStatus @default(ACTIVE) @map("account_status")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  bank       Bank           @relation(fields: [bankId], references: [id], onDelete: Restrict)
+  branch     Branch         @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  customer   Customer       @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  product    AccountProduct @relation(fields: [productId], references: [id], onDelete: Restrict)
+  balance    AccountBalanceCache?
+
+  @@unique([bankId, accountNumber])
+  @@unique([bankId, publicHandle])
+  @@index([customerId])
+  @@map("customer_accounts")
+}
+
+model LedgerAccount {
+  id        String            @id @default(uuid()) @db.Uuid
+  bankId    String            @map("bank_id") @db.Uuid
+  code      String
+  name      String
+  type      LedgerAccountType
+  createdAt DateTime          @default(now()) @map("created_at")
+
+  bank  Bank          @relation(fields: [bankId], references: [id], onDelete: Restrict)
+  lines JournalLine[]
+
+  @@unique([bankId, code])
+  @@map("ledger_accounts")
+}
+
+model JournalEntry {
+  id              String           @id @default(uuid()) @db.Uuid
+  bankId          String           @map("bank_id") @db.Uuid
+  type            JournalEntryType
+  reference       String
+  description     String
+  createdByUserId String?          @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime         @default(now()) @map("created_at")
+
+  bank  Bank          @relation(fields: [bankId], references: [id], onDelete: Restrict)
+  lines JournalLine[]
+  transaction Transaction?
+
+  @@unique([bankId, reference])
+  @@index([bankId, createdAt])
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id              String   @id @default(uuid()) @db.Uuid
+  journalEntryId  String   @map("journal_entry_id") @db.Uuid
+  ledgerAccountId String   @map("ledger_account_id") @db.Uuid
+  debit           Decimal  @default(0) @db.Decimal(18, 2)
+  credit          Decimal  @default(0) @db.Decimal(18, 2)
+  memo            String?
+
+  entry         JournalEntry  @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  ledgerAccount LedgerAccount @relation(fields: [ledgerAccountId], references: [id], onDelete: Restrict)
+
+  @@index([journalEntryId])
+  @@index([ledgerAccountId])
+  @@map("journal_lines")
+}
+
+model AccountBalanceCache {
+  accountId        String   @id @map("account_id") @db.Uuid
+  ledgerBalance    Decimal  @default(0) @map("ledger_balance") @db.Decimal(18, 2)
+  availableBalance Decimal  @default(0) @map("available_balance") @db.Decimal(18, 2)
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  account CustomerAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@map("account_balance_cache")
+}
+
+model Transaction {
+  id                      String            @id @default(uuid()) @db.Uuid
+  bankId                  String            @map("bank_id") @db.Uuid
+  type                    JournalEntryType
+  status                  TransactionStatus @default(INITIATED)
+  settlementStatus        SettlementStatus  @default(NOT_REQUIRED) @map("settlement_status")
+  amount                  Decimal           @db.Decimal(18, 2)
+  fromCustomerAccountId   String?           @map("from_customer_account_id") @db.Uuid
+  toCustomerAccountId     String?           @map("to_customer_account_id") @db.Uuid
+  toPublicIdentifier      String?           @map("to_public_identifier")
+  toIfscCode              String?           @map("to_ifsc_code")
+  toAccountNumber         String?           @map("to_account_number")
+  idempotencyKey          String?           @map("idempotency_key")
+  journalEntryId          String?           @unique @map("journal_entry_id") @db.Uuid
+  initiatedByUserId       String?           @map("initiated_by_user_id") @db.Uuid
+  actedOnBehalf           Boolean           @default(false) @map("acted_on_behalf")
+  customerVerifiedAt      DateTime?         @map("customer_verified_at")
+  verificationMethod      String?           @map("customer_verification_method")
+  createdAt               DateTime          @default(now()) @map("created_at")
+  updatedAt               DateTime          @updatedAt @map("updated_at")
+
+  bank         Bank          @relation(fields: [bankId], references: [id], onDelete: Restrict)
+  journalEntry JournalEntry? @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  events       TransactionEvent[]
+
+  @@unique([bankId, idempotencyKey])
+  @@index([bankId, createdAt])
+  @@index([fromCustomerAccountId])
+  @@index([toCustomerAccountId])
+  @@map("transactions")
+}
+
+model TransactionEvent {
+  id            String            @id @default(uuid()) @db.Uuid
+  transactionId String            @map("transaction_id") @db.Uuid
+  status        TransactionStatus
+  note          String?
+  createdAt     DateTime          @default(now()) @map("created_at")
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+
+  @@index([transactionId])
+  @@map("transaction_events")
+}
+
+model LoanProduct {
+  id           String   @id @default(uuid()) @db.Uuid
+  bankId       String   @map("bank_id") @db.Uuid
+  name         String
+  annualRate   Decimal  @map("annual_rate") @db.Decimal(6, 3)
+  minTermMonths Int     @map("min_term_months")
+  maxTermMonths Int     @map("max_term_months")
+  isActive     Boolean  @default(true) @map("is_active")
+
+  bank         Bank              @relation(fields: [bankId], references: [id], onDelete: Restrict)
+  applications LoanApplication[]
+  loans        Loan[]
+
+  @@unique([bankId, name])
+  @@map("loan_products")
+}
+
+model LoanApplication {
+  id              String                @id @default(uuid()) @db.Uuid
+  bankId          String                @map("bank_id") @db.Uuid
+  customerId      String                @map("customer_id") @db.Uuid
+  productId       String                @map("product_id") @db.Uuid
+  status          LoanApplicationStatus @default(SUBMITTED)
+  requestedAmount Decimal               @map("requested_amount") @db.Decimal(18, 2)
+  termMonths      Int                   @map("term_months")
+  incomeMonthly   Decimal               @map("income_monthly") @db.Decimal(18, 2)
+  purpose         String
+  reviewerNotes   String?               @map("reviewer_notes")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+
+  customer Customer    @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  product  LoanProduct @relation(fields: [productId], references: [id], onDelete: Restrict)
+  loan     Loan?
+
+  @@index([bankId, status])
+  @@map("loan_applications")
+}
+
+model Loan {
+  id            String   @id @default(uuid()) @db.Uuid
+  bankId        String   @map("bank_id") @db.Uuid
+  customerId    String   @map("customer_id") @db.Uuid
+  productId     String   @map("product_id") @db.Uuid
+  applicationId String   @unique @map("application_id") @db.Uuid
+  principal     Decimal  @db.Decimal(18, 2)
+  annualRate    Decimal  @map("annual_rate") @db.Decimal(6, 3)
+  termMonths    Int      @map("term_months")
+  disbursedAt   DateTime? @map("disbursed_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  customer    Customer        @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  product     LoanProduct     @relation(fields: [productId], references: [id], onDelete: Restrict)
+  application LoanApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  schedule    LoanSchedule[]
+
+  @@index([bankId, customerId])
+  @@map("loans")
+}
+
+model LoanSchedule {
+  id              String    @id @default(uuid()) @db.Uuid
+  loanId          String    @map("loan_id") @db.Uuid
+  installmentNo   Int       @map("installment_no")
+  dueDate         DateTime  @map("due_date")
+  principalDue    Decimal   @map("principal_due") @db.Decimal(18, 2)
+  interestDue     Decimal   @map("interest_due") @db.Decimal(18, 2)
+  paidAt          DateTime? @map("paid_at")
+
+  loan Loan @relation(fields: [loanId], references: [id], onDelete: Restrict)
+
+  @@unique([loanId, installmentNo])
+  @@map("loan_schedule")
+}
+
+model CustomerKyc {
+  id                    String    @id @default(uuid()) @db.Uuid
+  bankId                String    @map("bank_id") @db.Uuid
+  customerId            String    @map("customer_id") @db.Uuid
+  previousKycId          String?   @map("previous_kyc_id") @db.Uuid
+  status                KycStatus @default(SUBMITTED)
+  legalName             String    @map("legal_name")
+  dateOfBirth           DateTime  @map("date_of_birth")
+  address               String
+  submittedAt           DateTime  @default(now()) @map("submitted_at")
+  approvedAt            DateTime? @map("approved_at")
+  rejectedAt            DateTime? @map("rejected_at")
+  lastReviewedByUserId  String?   @map("last_reviewed_by_user_id") @db.Uuid
+  lastReviewedAt        DateTime? @map("last_reviewed_at")
+  rejectionReasonCode   String?   @map("rejection_reason_code")
+  rejectionReasonText   String?   @map("rejection_reason_text")
+  rejectionCount        Int       @default(0) @map("rejection_count")
+  riskFlags             Json?     @map("risk_flags")
+
+  customer  Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  documents KycDocument[]
+  reviews   KycReview[]
+
+  @@index([bankId, status])
+  @@map("customer_kyc")
+}
+
+model KycDocument {
+  id                  String   @id @default(uuid()) @db.Uuid
+  bankId              String   @map("bank_id") @db.Uuid
+  customerId          String   @map("customer_id") @db.Uuid
+  kycId               String   @map("kyc_id") @db.Uuid
+  documentType        String   @map("document_type")
+  documentNumberLast4 String   @map("document_number_last4")
+  storageProvider     String   @map("storage_provider")
+  storageBucket       String   @map("storage_bucket")
+  storageKey          String   @map("storage_key")
+  contentType         String   @map("content_type")
+  sizeBytes           Int      @map("size_bytes")
+  sha256              String?
+  uploadedAt          DateTime @default(now()) @map("uploaded_at")
+  uploadedByUserId    String?  @map("uploaded_by_user_id") @db.Uuid
+  deletedAt           DateTime? @map("deleted_at")
+
+  kyc CustomerKyc @relation(fields: [kycId], references: [id], onDelete: Restrict)
+
+  @@index([bankId, customerId])
+  @@map("kyc_documents")
+}
+
+model KycReview {
+  id              String          @id @default(uuid()) @db.Uuid
+  bankId          String          @map("bank_id") @db.Uuid
+  customerId      String          @map("customer_id") @db.Uuid
+  kycId           String          @map("kyc_id") @db.Uuid
+  reviewedByUserId String         @map("reviewed_by_user_id") @db.Uuid
+  action          KycReviewAction
+  notes           String?
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  kyc CustomerKyc @relation(fields: [kycId], references: [id], onDelete: Restrict)
+
+  @@index([bankId, customerId])
+  @@map("kyc_reviews")
+}
+
+model BankPolicy {
+  bankId                                String  @id @map("bank_id") @db.Uuid
+  defaultDailyTransferLimit             Decimal @default(50000) @map("default_daily_transfer_limit") @db.Decimal(18, 2)
+  defaultPerTxLimit                     Decimal @default(25000) @map("default_per_tx_limit") @db.Decimal(18, 2)
+  transferApprovalThreshold             Decimal @default(50000) @map("transfer_approval_threshold") @db.Decimal(18, 2)
+  interbankTransferApprovalThreshold     Decimal @default(25000) @map("interbank_transfer_approval_threshold") @db.Decimal(18, 2)
+  loanApprovalThreshold                 Decimal @default(100000) @map("loan_approval_threshold") @db.Decimal(18, 2)
+  loanDocumentsRequiredAbove            Decimal @default(50000) @map("loan_documents_required_above") @db.Decimal(18, 2)
+  tellerApprovalThreshold               Decimal @default(10000) @map("teller_approval_threshold") @db.Decimal(18, 2)
+  kycRejectionCooldownDays              Int     @default(30) @map("kyc_rejection_cooldown_days")
+  kycRequiredForTransfers               Boolean @default(true) @map("kyc_required_for_transfers")
+  kycRequiredForLimitChangeRequests     Boolean @default(true) @map("kyc_required_for_limit_change_requests")
+  kycRequiredForLoanApplications        Boolean @default(true) @map("kyc_required_for_loan_applications")
+
+  bank Bank @relation(fields: [bankId], references: [id], onDelete: Restrict)
+
+  @@map("bank_policies")
+}
+
+model LimitChangeRequest {
+  id                  String        @id @default(uuid()) @db.Uuid
+  bankId              String        @map("bank_id") @db.Uuid
+  branchId            String        @map("branch_id") @db.Uuid
+  customerId          String        @map("customer_id") @db.Uuid
+  requestedDailyLimit Decimal       @map("requested_daily_limit") @db.Decimal(18, 2)
+  reason              String
+  status              RequestStatus @default(PENDING)
+  reviewedByUserId    String?       @map("reviewed_by_user_id") @db.Uuid
+  reviewedAt          DateTime?     @map("reviewed_at")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  @@index([bankId, status])
+  @@map("limit_change_requests")
+}
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  bankId    String?          @map("bank_id") @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  type      NotificationType
+  title     String
+  message   String
+  metadata  Json?
+  isRead    Boolean          @default(false) @map("is_read")
+  readAt    DateTime?        @map("read_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  bankId    String?  @map("bank_id") @db.Uuid
+  actorUserId String? @map("actor_user_id") @db.Uuid
+  action    String
+  resource  String
+  resourceId String? @map("resource_id")
+  requestId String?  @map("request_id")
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  bank  Bank? @relation(fields: [bankId], references: [id], onDelete: Restrict)
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([bankId, createdAt])
+  @@index([actorUserId])
+  @@map("audit_logs")
+}
+
+model ReservedHandle {
+  id        String   @id @default(uuid()) @db.Uuid
+  handle    String   @unique @map("handle")
+  reason    String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("reserved_handles")
+}
+
+model CustomerTransferLimit {
+  id              String    @id @default(uuid()) @db.Uuid
+  customerId      String    @map("customer_id") @db.Uuid
+  dailyLimit      Decimal   @map("daily_limit") @db.Decimal(18, 2)
+  perTxLimit      Decimal?  @map("per_tx_limit") @db.Decimal(18, 2)
+  effectiveFrom   DateTime  @map("effective_from")
+  effectiveTo     DateTime? @map("effective_to")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  @@index([customerId])
+  @@map("customer_transfer_limits")
+}

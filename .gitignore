@@ -1,0 +1,22 @@
+node_modules
+.next
+dist
+coverage
+.env
+.env.*
+!.env.example
+*.log
+*.tsbuildinfo
+packages/db/prisma/dev.db
+
+# IDE
+.cursor/
+.vscode/
+.idea/
+
+# Auto-generated
+apps/web/next-env.d.ts
+
+# Windows junk
+nul
+Thumbs.db

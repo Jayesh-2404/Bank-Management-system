@@ -1,0 +1,27 @@
+{
+  "name": "bank-management-system",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Multi-tenant bank management system with Next.js web, Fastify API, Prisma schema, JWT/RBAC, ledger, loans, KYC, reports, and notifications.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev:web",
+    "dev:web": "npm run build --workspace @bank/shared && npm run dev --workspace @bank/web",
+    "dev:api": "npm run build:packages && npm run dev --workspace @bank/api",
+    "build:packages": "npm run build --workspace @bank/shared && npm run build --workspace @bank/auth && npm run build --workspace @bank/db",
+    "build": "npm run build:packages && npm run build --workspace @bank/api && npm run build --workspace @bank/web",
+    "typecheck": "npm run build:packages && npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "db:generate": "npm run generate --workspace @bank/db",
+    "db:seed": "npm run seed --workspace @bank/db"
+  },
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "devDependencies": {
+    "caniuse-lite": "^1.0.30001792"
+  }
+}
