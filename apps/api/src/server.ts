@@ -141,6 +141,13 @@ await app.register(swagger, {
 });
 await app.register(swaggerUi, { routePrefix: "/docs" });
 
+app.get("/", async () => ({
+  service: "bank-api",
+  status: "ok",
+  health: "/health",
+  docs: "/docs"
+}));
+
 app.get("/health", async () => ({
   status: "ok",
   service: "bank-api",
