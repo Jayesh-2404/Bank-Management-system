@@ -8,14 +8,14 @@ import { Button } from "@/components/button";
 import { roleLabels } from "@bank/shared";
 import { login } from "@/lib/api";
 
-const demoEmails: Record<string, string> = {
-  PlatformAdmin: "platform@bancuip.test",
-  BankAdmin: "admin@meridian.test",
-  BranchManager: "manager@meridian.test",
-  Teller: "teller@meridian.test",
-  LoanOfficer: "loan@meridian.test",
-  Auditor: "auditor@meridian.test",
-  Customer: "customer@meridian.test"
+const demoIdentities: Record<string, { email: string; loginType: "STAFF" | "CUSTOMER" }> = {
+  PlatformAdmin: { email: "platform@bancuip.test", loginType: "STAFF" },
+  BankAdmin: { email: "admin@meridian.test", loginType: "STAFF" },
+  BranchManager: { email: "manager@meridian.test", loginType: "STAFF" },
+  Teller: { email: "teller@meridian.test", loginType: "STAFF" },
+  LoanOfficer: { email: "loan@meridian.test", loginType: "STAFF" },
+  Auditor: { email: "auditor@meridian.test", loginType: "STAFF" },
+  Customer: { email: "customer@meridian.test", loginType: "CUSTOMER" }
 };
 
 export default function SignInPage() {
@@ -54,7 +54,7 @@ export default function SignInPage() {
           </Link>
           <h1 className="mt-16 text-3xl font-bold leading-tight">Secure access for every banking role</h1>
           <p className="mt-4 text-base text-white/60 leading-relaxed">
-            Staff use email login. Customers can use email or phone. Tokens, roles, tenant scope, and branch scope are handled by the API.
+            Use the listed demo identifiers. Tokens, roles, tenant scope, and branch scope are handled by the API.
           </p>
           <div className="mt-8 rounded-md border border-white/20 p-4 text-sm text-white/80">
             <p className="font-semibold text-white">Demo password:</p>
@@ -109,10 +109,19 @@ export default function SignInPage() {
           </Button>
           <div className="grid gap-2 rounded-md border border-line p-4">
             <p className="text-sm font-semibold text-ink">Demo identities</p>
-            {Object.entries(demoEmails).map(([role, email]) => (
+            {Object.entries(demoIdentities).map(([role, identity]) => (
               <div key={role} className="flex items-center justify-between gap-3 text-xs text-muted">
                 <span>{roleLabels[role as keyof typeof roleLabels]}</span>
-                <code className="cursor-pointer hover:text-teal-600" onClick={() => setIdentifier(email)}>{email}</code>
+                <button
+                  type="button"
+                  className="font-mono hover:text-teal-600"
+                  onClick={() => {
+                    setIdentifier(identity.email);
+                    setLoginType(identity.loginType);
+                  }}
+                >
+                  {identity.email}
+                </button>
               </div>
             ))}
           </div>

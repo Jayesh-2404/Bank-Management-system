@@ -33,6 +33,18 @@ const app = Fastify({
 const accessSecret = process.env.JWT_ACCESS_SECRET ?? "dev-access-secret";
 const refreshSecret = process.env.JWT_REFRESH_SECRET ?? "dev-refresh-secret";
 const corsOrigin = process.env.CORS_ORIGIN ?? "http://localhost:3000";
+const demoAuthEnabled = process.env.DEMO_AUTH_ENABLED === "true";
+const demoAuthPassword = process.env.DEMO_AUTH_PASSWORD ?? "Password123!";
+
+const demoLoginIdentities = {
+  PlatformAdmin: { email: "platform@bancuip.test", loginType: "STAFF" },
+  BankAdmin: { email: "admin@meridian.test", loginType: "STAFF" },
+  BranchManager: { email: "manager@meridian.test", loginType: "STAFF" },
+  Teller: { email: "teller@meridian.test", loginType: "STAFF" },
+  LoanOfficer: { email: "loan@meridian.test", loginType: "STAFF" },
+  Auditor: { email: "auditor@meridian.test", loginType: "STAFF" },
+  Customer: { email: "customer@meridian.test", loginType: "CUSTOMER" }
+} satisfies Record<Role, { email: string; loginType: "STAFF" | "CUSTOMER" }>;
 
 async function createNotification(params: {
   userId?: string;
@@ -137,13 +149,28 @@ app.get("/health", async () => ({
 
 app.post("/auth/login", async (request, reply) => {
   const body = loginSchema.parse(request.body);
-  const user = await getUserFromDb(body.identifier);
+  const identifier = body.identifier.trim().toLowerCase();
+  const demoIdentity = Object.values(demoLoginIdentities).find((identity) => identity.email === identifier);
+  const isValidDemoLogin =
+    demoAuthEnabled &&
+    demoIdentity?.loginType === body.loginType &&
+    body.password === demoAuthPassword;
+  if (demoAuthEnabled && !isValidDemoLogin) {
+    return reply.code(401).send({ error: "Invalid credentials" });
+  }
+
+  const loginIdentifier = demoAuthEnabled ? demoIdentity?.email : identifier;
+  if (!loginIdentifier) {
+    return reply.code(401).send({ error: "Invalid credentials" });
+  }
+
+  const user = await getUserFromDb(loginIdentifier);
   
   if (!user) {
     return reply.code(401).send({ error: "Invalid credentials" });
   }
 
-  const isPasswordValid = await verifyPassword(user.passwordHash, body.password);
+  const isPasswordValid = isValidDemoLogin || await verifyPassword(user.passwordHash, body.password);
   if (!isPasswordValid) {
     return reply.code(401).send({ error: "Invalid credentials" });
   }
@@ -205,12 +232,8 @@ app.get("/session/demo-roles", async () => ({
   roles: roles.map((role) => ({
     role,
     label: roleLabels[role],
-    demoEmail:
-      role === "PlatformAdmin"
-        ? "platform@bancuip.test"
-        : role === "Customer"
-          ? "customer@meridian.test"
-          : `${role.replace(/[A-Z]/g, (letter, index) => (index ? "." : "") + letter.toLowerCase()).replace(".", "")}@meridian.test`
+    demoEmail: demoLoginIdentities[role].email,
+    loginType: demoLoginIdentities[role].loginType
   }))
 }));
 

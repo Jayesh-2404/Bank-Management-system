@@ -25,14 +25,21 @@ Credentials and provider keys are intentionally read from `.env`; no secrets are
 
 ## Demo logins
 
-The UI includes role selectors on the sign-in screen. Use these seeded identities once the database is connected:
+Enable demo authentication with these values in `.env`:
 
-- `platform@bancuip.test`
-- `admin@meridian.test`
-- `manager@meridian.test`
-- `teller@meridian.test`
-- `loan@meridian.test`
-- `auditor@meridian.test`
-- `customer@meridian.test`
+```bash
+DEMO_AUTH_ENABLED="true"
+DEMO_AUTH_PASSWORD="Password123!"
+```
 
-Default seeded password: `Password123!`
+When demo auth is enabled, the API accepts only these hardcoded demo identities and the demo password, then loads the matching seeded user from the database so each role keeps its normal bank, branch, customer, and permission scope.
+
+| Role | Login type | Identifier | Password |
+| --- | --- | --- | --- |
+| Platform Admin | `STAFF` | `platform@bancuip.test` | `Password123!` |
+| Bank Admin | `STAFF` | `admin@meridian.test` | `Password123!` |
+| Branch Manager | `STAFF` | `manager@meridian.test` | `Password123!` |
+| Teller | `STAFF` | `teller@meridian.test` | `Password123!` |
+| Loan Officer | `STAFF` | `loan@meridian.test` | `Password123!` |
+| Auditor | `STAFF` | `auditor@meridian.test` | `Password123!` |
+| Customer | `CUSTOMER` | `customer@meridian.test` | `Password123!` |
