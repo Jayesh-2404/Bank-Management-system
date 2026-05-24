@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "npm run build:deps && tsc -p tsconfig.json",
+    "build:deps": "npm run build --workspace @bank/shared && npm run build --workspace @bank/auth && npm run build --workspace @bank/db",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js"
   },
