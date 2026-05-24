@@ -10,7 +10,7 @@ export function DataTable({
   emptyMessage?: string;
 }) {
   return (
-    <div className="overflow-hidden rounded-md border border-line bg-white">
+    <div className="overflow-hidden rounded-xl border border-line bg-white">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[720px] border-collapse text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase tracking-[0.08em] text-muted">
@@ -50,7 +50,7 @@ const statusStyles: Record<string, string> = {
   APPROVED: "bg-emerald-50 text-emerald-700 ring-emerald-200",
   POSTED: "bg-emerald-50 text-emerald-700 ring-emerald-200",
   SUBMITTED: "bg-blue-50 text-blue-700 ring-blue-200",
-  IN_REVIEW: "bg-blue-50 text-blue-700 ring-blue-200",
+  IN_REVIEW: "bg-amber-50 text-amber-700 ring-amber-200",
   PENDING: "bg-amber-50 text-amber-700 ring-amber-200",
   PENDING_APPROVAL: "bg-amber-50 text-amber-700 ring-amber-200",
   NEEDS_MORE_INFO: "bg-amber-50 text-amber-700 ring-amber-200",
@@ -63,7 +63,7 @@ const statusStyles: Record<string, string> = {
 
 export function StatusBadge({ status }: { status: string }) {
   return (
-    <span className={cn("inline-flex rounded-md px-2.5 py-1 text-xs font-semibold ring-1 ring-inset", statusStyles[status] ?? "bg-slate-100 text-slate-700 ring-slate-200")}>
+    <span className={cn("inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset", statusStyles[status] ?? "bg-slate-100 text-slate-700 ring-slate-200")}>
       {status.replaceAll("_", " ")}
     </span>
   );

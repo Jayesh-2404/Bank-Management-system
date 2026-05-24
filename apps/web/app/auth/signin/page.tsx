@@ -1,14 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Landmark } from "lucide-react";
+import { Landmark, ShieldCheck, WalletCards } from "lucide-react";
 import { Button } from "@/components/button";
-import { roleLabels } from "@bank/shared";
+import { roleLabels, type Role } from "@bank/shared";
 import { login } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
-const demoIdentities: Record<string, { email: string; loginType: "STAFF" | "CUSTOMER" }> = {
+type LoginType = "STAFF" | "CUSTOMER";
+
+const demoIdentities: Record<Role, { email: string; loginType: LoginType }> = {
   PlatformAdmin: { email: "platform@bancuip.test", loginType: "STAFF" },
   BankAdmin: { email: "admin@meridian.test", loginType: "STAFF" },
   BranchManager: { email: "manager@meridian.test", loginType: "STAFF" },
@@ -20,11 +23,25 @@ const demoIdentities: Record<string, { email: string; loginType: "STAFF" | "CUST
 
 export default function SignInPage() {
   const router = useRouter();
-  const [loginType, setLoginType] = useState<"STAFF" | "CUSTOMER">("STAFF");
-  const [identifier, setIdentifier] = useState("admin@meridian.test");
+  const [loginType, setLoginType] = useState<LoginType>("CUSTOMER");
+  const [identifier, setIdentifier] = useState("customer@meridian.test");
   const [password, setPassword] = useState("Password123!");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const demo = new URLSearchParams(window.location.search).get("demo") as Role | null;
+    if (!demo || !demoIdentities[demo]) return;
+
+    const identity = demoIdentities[demo];
+    setIdentifier(identity.email);
+    setLoginType(identity.loginType);
+  }, []);
+
+  function selectLoginType(nextLoginType: LoginType) {
+    setLoginType(nextLoginType);
+    setIdentifier(nextLoginType === "CUSTOMER" ? demoIdentities.Customer.email : demoIdentities.BankAdmin.email);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -42,54 +59,66 @@ export default function SignInPage() {
     router.push("/dashboard");
   }
 
+  const isCustomer = loginType === "CUSTOMER";
+
   return (
-    <main className="flex min-h-screen items-center justify-center p-4 bg-[#fafaf8]">
-      <div className="surface grid w-full max-w-5xl overflow-hidden md:grid-cols-[1fr_1.2fr]">
-        <div className="bg-slate-900 p-10 text-white">
-          <Link href="/" className="flex items-center gap-3 text-lg font-bold">
-            <span className="flex h-10 w-10 items-center justify-center rounded-md bg-white text-slate-900">
+    <main className="flex min-h-screen items-center justify-center bg-teal-50 p-4">
+      <form className="w-full max-w-lg rounded-2xl border border-line bg-white p-6 shadow-panel sm:p-8" onSubmit={handleSubmit}>
+        <div className="text-center">
+          <Link href="/" className="mx-auto flex w-fit items-center gap-3 text-lg font-bold text-ink">
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-950 text-white">
               <Landmark className="h-5 w-5" />
             </span>
             bancuip
           </Link>
-          <h1 className="mt-16 text-3xl font-bold leading-tight">Secure access for every banking role</h1>
-          <p className="mt-4 text-base text-white/60 leading-relaxed">
-            Use the listed demo identifiers. Tokens, roles, tenant scope, and branch scope are handled by the API.
+          <p className={cn("mt-6 text-xs font-semibold uppercase tracking-[0.16em]", isCustomer ? "text-teal-600" : "text-slate-700")}>
+            {isCustomer ? "Customer Banking" : "Staff Portal"}
           </p>
-          <div className="mt-8 rounded-md border border-white/20 p-4 text-sm text-white/80">
-            <p className="font-semibold text-white">Demo password:</p>
-            <p className="mt-1">Password123!</p>
-          </div>
+          <h1 className="mt-2 text-3xl font-bold tracking-normal text-ink">Sign in</h1>
         </div>
-        <form className="grid gap-5 p-10" onSubmit={handleSubmit}>
-          <div>
-            <h2 className="text-3xl font-bold text-ink tracking-tight">Sign in</h2>
-            <p className="mt-2 text-sm text-muted">Choose a demo role now; replace credentials in <code>.env</code> later.</p>
-          </div>
 
-          {error && (
-            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600">
-              {error}
-            </div>
-          )}
+        <div className="mt-7 grid grid-cols-2 rounded-xl bg-slate-100 p-1">
+          <button
+            type="button"
+            className={cn(
+              "rounded-lg px-4 py-3 text-sm font-semibold transition",
+              !isCustomer ? "bg-slate-900 text-white shadow-soft" : "text-slate-600 hover:text-ink"
+            )}
+            onClick={() => selectLoginType("STAFF")}
+          >
+            Staff Login
+          </button>
+          <button
+            type="button"
+            className={cn(
+              "rounded-lg px-4 py-3 text-sm font-semibold transition",
+              isCustomer ? "bg-teal-600 text-white shadow-soft" : "text-slate-600 hover:text-ink"
+            )}
+            onClick={() => selectLoginType("CUSTOMER")}
+          >
+            Customer Login
+          </button>
+        </div>
 
-          <div className="grid gap-2">
-            <label className="label" htmlFor="loginType">Login type</label>
-            <select
-              id="loginType"
-              className="field"
-              value={loginType}
-              onChange={(e) => setLoginType(e.target.value as "STAFF" | "CUSTOMER")}
-            >
-              <option value="STAFF">STAFF</option>
-              <option value="CUSTOMER">CUSTOMER</option>
-            </select>
+        {isCustomer ? <CustomerLoginPreview /> : <StaffLoginPreview />}
+
+        {error && (
+          <div className="mt-5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+            {error}
           </div>
+        )}
+
+        <input type="hidden" name="loginType" value={loginType} />
+
+        <div className="mt-5 grid gap-4">
           <div className="grid gap-2">
-            <label className="label" htmlFor="email">Email or phone</label>
+            <label className="label" htmlFor="identifier">
+              {isCustomer ? "Identifier" : "Email identifier"}
+            </label>
             <input
-              id="email"
+              id="identifier"
               className="field"
+              placeholder={isCustomer ? demoIdentities.Customer.email : demoIdentities.BankAdmin.email}
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
             />
@@ -104,29 +133,105 @@ export default function SignInPage() {
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className={cn("w-full", isCustomer ? "bg-teal-600 hover:bg-teal-700" : "bg-slate-900 hover:bg-slate-800 focus:ring-slate-900/20")} disabled={loading}>
             {loading ? "Signing in..." : "Continue"}
           </Button>
-          <div className="grid gap-2 rounded-md border border-line p-4">
-            <p className="text-sm font-semibold text-ink">Demo identities</p>
-            {Object.entries(demoIdentities).map(([role, identity]) => (
-              <div key={role} className="flex items-center justify-between gap-3 text-xs text-muted">
-                <span>{roleLabels[role as keyof typeof roleLabels]}</span>
+        </div>
+
+        <div className="mt-5 rounded-xl border border-line bg-slate-50 p-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-ink">Demo password</p>
+              <p className="mt-1 font-mono text-sm text-muted">Password123!</p>
+            </div>
+            <span className={cn("rounded-full px-3 py-1 text-xs font-semibold", isCustomer ? "bg-teal-50 text-teal-700" : "bg-slate-200 text-slate-700")}>
+              {isCustomer ? "Customer" : "Staff"}
+            </span>
+          </div>
+          <div className="mt-4 grid gap-2">
+            {Object.entries(demoIdentities)
+              .filter(([, identity]) => identity.loginType === loginType)
+              .map(([role, identity]) => (
                 <button
+                  key={role}
                   type="button"
-                  className="font-mono hover:text-teal-600"
+                  className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-left text-xs text-muted transition hover:bg-white hover:text-teal-700"
                   onClick={() => {
                     setIdentifier(identity.email);
                     setLoginType(identity.loginType);
                   }}
                 >
-                  {identity.email}
+                  <span>{roleLabels[role as Role]}</span>
+                  <span className="font-mono">{identity.email}</span>
                 </button>
-              </div>
-            ))}
+              ))}
           </div>
-        </form>
-      </div>
+        </div>
+      </form>
     </main>
+  );
+}
+
+function CustomerLoginPreview() {
+  return (
+    <div className="mt-5 overflow-hidden rounded-2xl border border-teal-100 bg-teal-50 p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-teal-700 shadow-soft">
+              <WalletCards className="h-4 w-4" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-ink">Prime Savings</p>
+              <p className="text-xs text-slate-600">Amanda Kayle</p>
+            </div>
+          </div>
+          <p className="mt-5 text-3xl font-bold tracking-normal text-slate-950">INR 98,450</p>
+          <p className="mt-1 text-xs font-medium text-teal-700">Available balance</p>
+        </div>
+        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-teal-700 shadow-soft">Active</span>
+      </div>
+
+      <div className="mt-5 grid grid-cols-2 gap-3">
+        <div className="rounded-xl bg-white/80 p-3">
+          <p className="text-xs text-muted">Last transfer</p>
+          <p className="mt-1 text-sm font-semibold text-ink">INR 12,000</p>
+        </div>
+        <div className="rounded-xl bg-white/80 p-3">
+          <p className="text-xs text-muted">Daily limit</p>
+          <p className="mt-1 text-sm font-semibold text-ink">INR 2.5L</p>
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-xl bg-white/80 p-3">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4 text-teal-700" />
+          <p className="text-xs font-semibold text-slate-700">Protected by role-based customer access</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StaffLoginPreview() {
+  return (
+    <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-800 shadow-soft">
+          <ShieldCheck className="h-5 w-5" />
+        </span>
+        <div>
+          <p className="text-sm font-semibold text-ink">Secure staff portal</p>
+          <p className="text-xs text-muted">Role-scoped operations for banking teams</p>
+        </div>
+      </div>
+      <div className="mt-4 grid grid-cols-3 gap-2">
+        {["Accounts", "Approvals", "Audit"].map((item) => (
+          <div key={item} className="rounded-xl bg-white px-3 py-2 text-center text-xs font-semibold text-slate-600 shadow-soft">
+            {item}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

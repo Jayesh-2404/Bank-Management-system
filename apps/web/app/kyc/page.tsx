@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { FileCheck2, ShieldCheck, UserCheck, Users } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/button";
 import { DataTable, StatusBadge } from "@/components/data-table";
@@ -65,39 +66,69 @@ export default function KycPage() {
 
   return (
     <AppShell title="KYC" description="Strict KYC gate for transfers, limit increases, and loan submissions." active="/kyc" role={user?.role as Role | undefined}>
+      <div className="mb-5 grid gap-4 md:grid-cols-3">
+        <KycInsight icon={Users} label="Customers" value={String(customers.length)} />
+        <KycInsight icon={FileCheck2} label="Open cases" value={String(cases.filter((item) => !["APPROVED", "REJECTED"].includes(item.status)).length)} />
+        <KycInsight icon={ShieldCheck} label="Control" value="Masked docs" />
+      </div>
+
       <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-        <form className="panel grid gap-4 p-5" onSubmit={submitKyc}>
+        <form className="panel grid gap-5 p-6" onSubmit={submitKyc}>
           <div>
-            <h2 className="text-lg font-semibold">Submit KYC</h2>
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-teal-50 text-teal-600">
+              <UserCheck className="h-6 w-6" />
+            </div>
+            <h2 className="mt-4 text-xl font-semibold text-ink">Submit KYC</h2>
             <p className="mt-1 text-sm text-muted">Create a review case using customer profile and masked document details.</p>
           </div>
-          <select className="field" value={form.customerId} onChange={(e) => {
-            const customer = customers.find((item) => item.id === e.target.value);
-            setForm({ ...form, customerId: e.target.value, legalName: customer?.name ?? form.legalName });
-          }}>
-            {customers.map((customer) => (
-              <option key={customer.id} value={customer.id}>{customer.name}</option>
-            ))}
-          </select>
-          <div className="grid gap-4 md:grid-cols-2">
-            <input className="field" value={form.legalName} onChange={(e) => setForm({ ...form, legalName: e.target.value })} placeholder="Legal name" />
-            <input className="field" type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} />
-            <input className="field md:col-span-2" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Address" />
-            <select className="field" value={form.documentType} onChange={(e) => setForm({ ...form, documentType: e.target.value })}>
-              <option value="PAN">PAN</option>
-              <option value="AADHAAR">Aadhaar</option>
-              <option value="PASSPORT">Passport</option>
-              <option value="DRIVER_LICENSE">Driver license</option>
+          <div className="grid gap-2">
+            <label className="label">Customer</label>
+            <select className="field" value={form.customerId} onChange={(e) => {
+              const customer = customers.find((item) => item.id === e.target.value);
+              setForm({ ...form, customerId: e.target.value, legalName: customer?.name ?? form.legalName });
+            }}>
+              {customers.map((customer) => (
+                <option key={customer.id} value={customer.id}>{customer.name}</option>
+              ))}
             </select>
-            <input className="field" maxLength={4} value={form.documentNumberLast4} onChange={(e) => setForm({ ...form, documentNumberLast4: e.target.value })} placeholder="Document last 4" />
           </div>
-          {message ? <div className="rounded-md border border-line bg-slate-50 p-3 text-sm text-slate-700">{message}</div> : null}
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-2">
+              <label className="label">Legal name</label>
+              <input className="field" value={form.legalName} onChange={(e) => setForm({ ...form, legalName: e.target.value })} placeholder="Legal name" />
+            </div>
+            <div className="grid gap-2">
+              <label className="label">Date of birth</label>
+              <input className="field" type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} />
+            </div>
+            <div className="grid gap-2 md:col-span-2">
+              <label className="label">Address</label>
+              <input className="field" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Address" />
+            </div>
+            <div className="grid gap-2">
+              <label className="label">Document</label>
+              <select className="field" value={form.documentType} onChange={(e) => setForm({ ...form, documentType: e.target.value })}>
+                <option value="PAN">PAN</option>
+                <option value="AADHAAR">Aadhaar</option>
+                <option value="PASSPORT">Passport</option>
+                <option value="DRIVER_LICENSE">Driver license</option>
+              </select>
+            </div>
+            <div className="grid gap-2">
+              <label className="label">Document last 4</label>
+              <input className="field" maxLength={4} value={form.documentNumberLast4} onChange={(e) => setForm({ ...form, documentNumberLast4: e.target.value })} placeholder="Document last 4" />
+            </div>
+          </div>
+          {message ? <div className="rounded-xl border border-line bg-slate-50 p-3 text-sm text-slate-700">{message}</div> : null}
           <Button type="submit" className="w-fit" disabled={submitting || !form.customerId}>
             {submitting ? "Submitting..." : "Submit KYC"}
           </Button>
         </form>
-        <div className="panel p-5">
-          <h2 className="mb-4 text-lg font-semibold">KYC review cases</h2>
+        <div className="panel p-6">
+          <div className="mb-4">
+            <h2 className="text-xl font-semibold text-ink">KYC review cases</h2>
+            <p className="mt-1 text-sm text-muted">Review queue, document hints, and customer limits.</p>
+          </div>
           <DataTable
             columns={["Customer", "Status", "Submitted", "Document", "Action"]}
             rows={cases.map((item) => ({
@@ -115,15 +146,32 @@ export default function KycPage() {
           />
           <div className="mt-4 grid gap-3 md:grid-cols-3">
             {customers.map((customer) => (
-              <div key={customer.id} className="rounded-md border border-line bg-slate-50 p-4">
-                <p className="font-semibold">{customer.name}</p>
+              <div key={customer.id} className="rounded-xl border border-line bg-slate-50 p-4">
+                <p className="font-semibold text-ink">{customer.name}</p>
                 <p className="mt-1 text-sm text-muted">{customer.email}</p>
-                <p className="mt-3 text-sm">Daily limit: {formatCurrency(customer.dailyLimit)}</p>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <StatusBadge status={customer.kycStatus} />
+                  <p className="text-sm font-semibold text-slate-700">{formatCurrency(customer.dailyLimit)}</p>
+                </div>
               </div>
             ))}
           </div>
         </div>
       </div>
     </AppShell>
+  );
+}
+
+function KycInsight({ icon: Icon, label, value }: { icon: typeof Users; label: string; value: string }) {
+  return (
+    <div className="panel flex items-center gap-4 p-5">
+      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-teal-50 text-teal-600">
+        <Icon className="h-5 w-5" />
+      </span>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">{label}</p>
+        <p className="mt-1 text-lg font-semibold text-ink">{value}</p>
+      </div>
+    </div>
   );
 }

@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowDownLeft, ArrowUpRight, Landmark, Send, ShieldCheck, WalletCards } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
-import { DataTable, StatusBadge } from "@/components/data-table";
+import { StatusBadge } from "@/components/data-table";
 import { api, getStoredUser, type AccountSummary, type TransactionSummary } from "@/lib/api";
 import { formatCurrency, type Role } from "@bank/shared";
 
@@ -107,10 +108,19 @@ export default function TransfersPage() {
       active="/transfers"
       role={user.role as Role}
     >
+      <div className="mb-5 grid gap-4 md:grid-cols-3">
+        <TransferInsight icon={WalletCards} label="Source accounts" value={String(accounts.length)} />
+        <TransferInsight icon={ShieldCheck} label="Policy checks" value="KYC + limits" />
+        <TransferInsight icon={Landmark} label="Routes" value="Handle, account, IFSC" />
+      </div>
+
       <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-        <form className="panel grid gap-4 p-5" onSubmit={handleSubmit}>
+        <form className="panel grid gap-5 p-6" onSubmit={handleSubmit}>
           <div>
-            <h2 className="text-lg font-semibold">New transfer</h2>
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-teal-50 text-teal-600">
+              <Send className="h-6 w-6" />
+            </div>
+            <h2 className="mt-4 text-xl font-semibold text-ink">New transfer</h2>
             <p className="mt-1 text-sm text-muted">Choose an account, verify the recipient route, and submit for policy checks.</p>
           </div>
           <div className="grid gap-2">
@@ -193,39 +203,72 @@ export default function TransfersPage() {
             </div>
           )}
 
-          <div className="rounded-md border border-teal-200 bg-teal-50 p-4 text-sm text-teal-700">
-            Recipient confirmation shows only masked names after account/handle resolution to reduce enumeration risk.
+          <div className="rounded-xl border border-teal-100 bg-teal-50 p-4 text-sm text-teal-800">
+            <div className="flex gap-3">
+              <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <span>Recipient confirmation shows only masked names after account/handle resolution to reduce enumeration risk.</span>
+            </div>
           </div>
           <button 
             type="submit" 
-            className="w-fit rounded-md bg-teal-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-fit rounded-lg bg-teal-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-700 focus:outline-none focus:ring-4 focus:ring-teal-600/20 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={submitting || !formData.fromAccountId || !formData.recipient || formData.amount <= 0}
           >
             {submitting ? "Processing..." : "Submit transfer"}
           </button>
         </form>
 
-        <div className="panel p-5">
+        <div className="panel p-6">
           <div className="mb-4">
-            <h2 className="text-lg font-semibold">Transfer history</h2>
+            <h2 className="text-xl font-semibold text-ink">Transfer history</h2>
             <p className="mt-1 text-sm text-muted">Recent movements for the selected source account.</p>
           </div>
-          <DataTable
-            columns={["Date", "Description", "Direction", "Amount", "Status"]}
-            rows={transactions.map((tx) => {
+          <div className="grid gap-3">
+            {transactions.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-line bg-slate-50 p-8 text-center text-sm text-muted">
+                No transfers yet for this account.
+              </div>
+            ) : transactions.map((tx) => {
               const isCredit = tx.to === formData.fromAccountId;
-              return {
-                Date: new Date(tx.createdAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }),
-                Description: tx.description || tx.type.replaceAll("_", " "),
-                Direction: isCredit ? "Incoming" : "Outgoing",
-                Amount: <span className={isCredit ? "font-semibold text-emerald-700" : "font-semibold text-slate-800"}>{isCredit ? "+" : "-"}{formatCurrency(tx.amount)}</span>,
-                Status: <StatusBadge status={tx.status} />
-              };
+              const Icon = isCredit ? ArrowDownLeft : ArrowUpRight;
+              return (
+                <div key={tx.id} className="flex flex-col gap-4 rounded-xl border border-line bg-white p-4 shadow-soft sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <span className={`flex h-10 w-10 items-center justify-center rounded-full ${isCredit ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-700"}`}>
+                      <Icon className="h-5 w-5" />
+                    </span>
+                    <div>
+                      <p className="font-semibold text-ink">{tx.description || tx.type.replaceAll("_", " ")}</p>
+                      <p className="mt-1 text-xs text-muted">{new Date(tx.createdAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-4 sm:justify-end">
+                    <div className="text-right">
+                      <p className={`font-semibold ${isCredit ? "text-emerald-700" : "text-slate-900"}`}>{isCredit ? "+" : "-"}{formatCurrency(tx.amount)}</p>
+                      <p className="text-xs text-muted">{isCredit ? "Incoming" : "Outgoing"}</p>
+                    </div>
+                    <StatusBadge status={tx.status} />
+                  </div>
+                </div>
+              );
             })}
-            emptyMessage="No transfers yet for this account."
-          />
+          </div>
         </div>
       </div>
     </AppShell>
+  );
+}
+
+function TransferInsight({ icon: Icon, label, value }: { icon: typeof WalletCards; label: string; value: string }) {
+  return (
+    <div className="panel flex items-center gap-4 p-5">
+      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-teal-50 text-teal-600">
+        <Icon className="h-5 w-5" />
+      </span>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">{label}</p>
+        <p className="mt-1 text-lg font-semibold text-ink">{value}</p>
+      </div>
+    </div>
   );
 }

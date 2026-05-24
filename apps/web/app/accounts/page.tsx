@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { AccountCard } from "@/components/account-card";
 import { AppShell } from "@/components/app-shell";
 import { DataTable, StatusBadge } from "@/components/data-table";
@@ -124,28 +125,48 @@ export default function AccountsPage() {
           />
         </div>
 
-        <div className="panel p-5">
+        <div className="panel p-6">
           <div className="mb-4">
-            <h2 className="text-lg font-semibold">Transaction history</h2>
+            <h2 className="text-xl font-semibold text-ink">Transaction history</h2>
             <p className="mt-1 text-sm text-muted">
               {selectedAccount ? `${selectedAccount.product} ending ${selectedAccount.accountNumber.slice(-4)}` : "Select an account to inspect movement."}
             </p>
           </div>
-          <DataTable
-            columns={["Date", "Movement", "Counterparty", "Amount", "Status"]}
-            rows={transactions.map((tx) => {
+          <div className="grid gap-3">
+            {transactions.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-line bg-slate-50 p-8 text-center text-sm text-muted">
+                No transactions recorded for this account.
+              </div>
+            ) : transactions.map((tx) => {
               const isCredit = tx.to === selectedAccountId;
               const counterparty = isCredit ? tx.from : tx.to;
-              return {
-                Date: new Date(tx.createdAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }),
-                Movement: tx.description ?? tx.type.replaceAll("_", " "),
-                Counterparty: counterparty ? `...${counterparty.slice(-6)}` : "Bank counter",
-                Amount: <span className={isCredit ? "font-semibold text-emerald-700" : "font-semibold text-slate-800"}>{isCredit ? "+" : "-"}{formatCurrency(tx.amount)}</span>,
-                Status: <StatusBadge status={tx.status} />
-              };
+              const Icon = isCredit ? ArrowDownLeft : ArrowUpRight;
+              return (
+                <div key={tx.id} className="flex flex-col gap-4 rounded-xl border border-line bg-white p-4 shadow-soft sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <span className={`flex h-10 w-10 items-center justify-center rounded-full ${isCredit ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-700"}`}>
+                      <Icon className="h-5 w-5" />
+                    </span>
+                    <div>
+                      <p className="font-semibold text-ink">{tx.description ?? tx.type.replaceAll("_", " ")}</p>
+                      <p className="mt-1 text-xs text-muted">
+                        {new Date(tx.createdAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                        {" · "}
+                        {counterparty ? `...${counterparty.slice(-6)}` : "Bank counter"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-4 sm:justify-end">
+                    <div className="text-right">
+                      <p className={`font-semibold ${isCredit ? "text-emerald-700" : "text-slate-900"}`}>{isCredit ? "+" : "-"}{formatCurrency(tx.amount)}</p>
+                      <p className="text-xs text-muted">{isCredit ? "Credit" : "Debit"}</p>
+                    </div>
+                    <StatusBadge status={tx.status} />
+                  </div>
+                </div>
+              );
             })}
-            emptyMessage="No transactions recorded for this account."
-          />
+          </div>
         </div>
       </div>
     </AppShell>

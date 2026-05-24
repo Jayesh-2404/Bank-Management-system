@@ -17,7 +17,6 @@ import {
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
-  Search,
   Send,
   ShieldCheck,
   X,
@@ -103,17 +102,27 @@ export function AppShell({ children, title, description, active = "/dashboard", 
   return (
     <div className="flex min-h-screen bg-canvas">
       <aside
-        className={`fixed left-0 top-0 z-40 h-screen border-r border-slate-800 bg-slate-950 transition-all duration-300 ${
+        className={`fixed left-0 top-0 z-40 hidden h-screen flex-col border-r border-slate-800 bg-slate-950 transition-all duration-300 lg:flex ${
           sidebarCollapsed ? "w-16" : "w-64"
-        } hidden lg:flex flex-col`}
+        }`}
       >
-        <div className="flex items-center gap-3 border-b border-white/10 px-4 py-5">
-          <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-white text-slate-900">
-            <Landmark className="h-5 w-5" />
-          </span>
-          <span className={`text-lg font-bold text-white transition-all duration-300 ${sidebarCollapsed ? "opacity-0 w-0 overflow-hidden" : "opacity-100"}`}>
-            bancuip
-          </span>
+        <div className="border-b border-white/10 px-4 py-5">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-white text-slate-900">
+              <Landmark className="h-5 w-5" />
+            </span>
+            <span className={`text-lg font-bold text-white transition-all duration-300 ${sidebarCollapsed ? "w-0 overflow-hidden opacity-0" : "opacity-100"}`}>
+              bancuip
+            </span>
+          </div>
+          {!sidebarCollapsed && (
+            <div className="mt-5">
+              <p className="truncate text-sm font-semibold text-white">{user?.displayName || "User"}</p>
+              <span className="mt-2 inline-flex rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white/70">
+                {roleLabels[role]}
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-1 flex-col overflow-y-auto p-3">
@@ -125,7 +134,7 @@ export function AppShell({ children, title, description, active = "/dashboard", 
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium transition ${
+                  className={`flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition ${
                     isActive
                       ? "bg-white text-slate-950 shadow-soft"
                       : "text-white/60 hover:bg-white/10 hover:text-white"
@@ -133,7 +142,7 @@ export function AppShell({ children, title, description, active = "/dashboard", 
                   title={sidebarCollapsed ? item.label : undefined}
                 >
                   <Icon className="h-5 w-5 flex-shrink-0" />
-                  <span className={`transition-all duration-300 ${sidebarCollapsed ? "opacity-0 w-0 overflow-hidden" : "opacity-100"}`}>
+                  <span className={`transition-all duration-300 ${sidebarCollapsed ? "w-0 overflow-hidden opacity-0" : "opacity-100"}`}>
                     {item.label}
                   </span>
                 </Link>
@@ -145,11 +154,11 @@ export function AppShell({ children, title, description, active = "/dashboard", 
         <div className="border-t border-white/10 p-3">
           <button
             onClick={handleLogout}
-            className="flex w-full items-center gap-3 rounded-md px-3 py-3 text-sm font-medium text-white/60 transition hover:bg-white/10 hover:text-white"
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-white/60 transition hover:bg-white/10 hover:text-white"
             title={sidebarCollapsed ? "Sign out" : undefined}
           >
             <LogOut className="h-5 w-5 flex-shrink-0" />
-            <span className={`transition-all duration-300 ${sidebarCollapsed ? "opacity-0 w-0 overflow-hidden" : "opacity-100"}`}>
+            <span className={`transition-all duration-300 ${sidebarCollapsed ? "w-0 overflow-hidden opacity-0" : "opacity-100"}`}>
               Sign out
             </span>
           </button>
@@ -158,7 +167,7 @@ export function AppShell({ children, title, description, active = "/dashboard", 
         <div className="border-t border-white/10 p-3">
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="flex w-full items-center justify-center gap-2 rounded-md px-3 py-2 text-sm text-white/40 transition hover:bg-white/10 hover:text-white"
+            className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm text-white/40 transition hover:bg-white/10 hover:text-white"
             title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <><PanelLeftClose className="h-4 w-4" /><span>Collapse</span></>}
@@ -170,16 +179,24 @@ export function AppShell({ children, title, description, active = "/dashboard", 
         <div className="fixed inset-0 z-50 flex lg:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={() => setMobileSidebarOpen(false)} />
           <aside className="relative z-10 flex h-full w-72 flex-col bg-slate-950">
-            <div className="flex items-center gap-3 border-b border-white/10 p-4">
-              <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-white text-slate-900">
-                <Landmark className="h-5 w-5" />
-              </span>
-              <span className="text-lg font-bold text-white">bancuip</span>
-              <button className="ml-auto rounded-md bg-white/10 p-2 text-white" onClick={() => setMobileSidebarOpen(false)} title="Close menu">
-                <X className="h-4 w-4" />
-              </button>
+            <div className="border-b border-white/10 p-4">
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-white text-slate-900">
+                  <Landmark className="h-5 w-5" />
+                </span>
+                <span className="text-lg font-bold text-white">bancuip</span>
+                <button className="ml-auto rounded-lg bg-white/10 p-2 text-white" onClick={() => setMobileSidebarOpen(false)} title="Close menu">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="mt-5">
+                <p className="truncate text-sm font-semibold text-white">{user?.displayName || "User"}</p>
+                <span className="mt-2 inline-flex rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white/70">
+                  {roleLabels[role]}
+                </span>
+              </div>
             </div>
-            <nav className="flex-1 overflow-y-auto p-3 grid gap-1">
+            <nav className="grid flex-1 gap-1 overflow-y-auto p-3">
               {visibleNav.map((item) => {
                 const Icon = item.icon;
                 const isActive = active === item.href;
@@ -188,7 +205,7 @@ export function AppShell({ children, title, description, active = "/dashboard", 
                     key={item.href}
                     href={item.href}
                     onClick={() => setMobileSidebarOpen(false)}
-                    className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium transition ${
+                    className={`flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition ${
                       isActive
                         ? "bg-white text-slate-950"
                         : "text-white/60 hover:bg-white/10 hover:text-white"
@@ -203,7 +220,7 @@ export function AppShell({ children, title, description, active = "/dashboard", 
             <div className="border-t border-white/10 p-3">
               <button
                 onClick={handleLogout}
-                className="flex w-full items-center gap-3 rounded-md px-3 py-3 text-sm font-medium text-white/60 transition hover:bg-white/10 hover:text-white"
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-white/60 transition hover:bg-white/10 hover:text-white"
               >
                 <LogOut className="h-5 w-5 flex-shrink-0" />
                 Sign out
@@ -214,23 +231,18 @@ export function AppShell({ children, title, description, active = "/dashboard", 
       )}
 
       <div className={`flex-1 transition-all duration-300 ${sidebarCollapsed ? "lg:ml-16" : "lg:ml-64"}`}>
-        <header className="sticky top-0 z-30 flex items-center justify-between gap-4 border-b border-line bg-white/95 px-5 py-4 backdrop-blur md:px-7">
+        <header className="sticky top-0 z-30 flex items-center justify-between gap-4 border-b border-line bg-white/95 px-5 py-3 backdrop-blur md:px-7">
           <div className="flex min-w-0 items-center gap-4">
-            <button className="rounded-md bg-slate-100 p-2 lg:hidden" onClick={() => setMobileSidebarOpen(true)} title="Open menu">
+            <button className="rounded-lg bg-slate-100 p-2 lg:hidden" onClick={() => setMobileSidebarOpen(true)} title="Open menu">
               <Menu className="h-5 w-5 text-ink" />
             </button>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-teal-600">{user?.bankName || "Bank"}</p>
               <h1 className="mt-0.5 truncate text-xl font-bold text-ink md:text-2xl">{title}</h1>
-              <p className="mt-0.5 hidden max-w-2xl text-sm text-muted md:block">{description}</p>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-3">
-            <div className="hidden items-center gap-2 rounded-md border border-line bg-slate-50 px-4 py-2 text-sm text-muted xl:flex">
-              <Search className="h-4 w-4" />
-              <span>Search accounts</span>
-            </div>
-            <Link href="/notifications" className="relative rounded-md border border-line bg-white p-3 hover:bg-slate-50" title="Notifications">
+            <Link href="/notifications" className="relative rounded-lg border border-line bg-white p-3 hover:bg-slate-50" title="Notifications">
               <Bell className="h-5 w-5 text-muted" />
               {unreadCount > 0 && (
                 <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-md bg-amber-500 text-xs font-bold text-white">
@@ -240,10 +252,10 @@ export function AppShell({ children, title, description, active = "/dashboard", 
             </Link>
             <div className="relative">
               <button
-                className="flex items-center gap-3 rounded-md border border-line bg-white py-2 pl-1 pr-4 hover:bg-slate-50"
+                className="flex items-center gap-3 rounded-lg border border-line bg-white py-2 pl-1 pr-4 hover:bg-slate-50"
                 onClick={() => setShowUserMenu(!showUserMenu)}
               >
-                <span className="flex h-9 w-9 items-center justify-center rounded-md bg-teal-100 text-sm font-bold text-teal-700">
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-100 text-sm font-bold text-teal-700">
                   {initials}
                 </span>
                 <div className="hidden text-left md:block">
@@ -252,7 +264,7 @@ export function AppShell({ children, title, description, active = "/dashboard", 
                 </div>
               </button>
               {showUserMenu && (
-                <div className="absolute right-0 top-full mt-2 w-52 rounded-md border border-line bg-white py-2 shadow-panel">
+                <div className="absolute right-0 top-full mt-2 w-52 rounded-xl border border-line bg-white py-2 shadow-panel">
                   <div className="border-b border-line px-4 py-3">
                     <p className="text-sm font-semibold text-ink">{user?.displayName}</p>
                     <p className="mt-0.5 text-xs text-muted">{user?.bankName}</p>
@@ -268,7 +280,10 @@ export function AppShell({ children, title, description, active = "/dashboard", 
             </div>
           </div>
         </header>
-        <div className="p-5 md:p-7">{children}</div>
+        <div className="p-5 md:p-7">
+          <p className="mb-5 text-sm text-muted">{description}</p>
+          {children}
+        </div>
       </div>
     </div>
   );
