@@ -32,7 +32,10 @@ const app = Fastify({
 
 const accessSecret = process.env.JWT_ACCESS_SECRET ?? "dev-access-secret";
 const refreshSecret = process.env.JWT_REFRESH_SECRET ?? "dev-refresh-secret";
-const corsOrigin = process.env.CORS_ORIGIN ?? "http://localhost:3000";
+const corsOrigins = (process.env.CORS_ORIGIN ?? "http://localhost:3000")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 const demoAuthEnabled = process.env.DEMO_AUTH_ENABLED === "true";
 const demoAuthPassword = process.env.DEMO_AUTH_PASSWORD ?? "Password123!";
 
@@ -129,7 +132,10 @@ function canAccessAccount(principal: AuthPrincipal, account: { bankId: string; c
   return principal.bankId === account.bankId;
 }
 
-await app.register(cors, { origin: corsOrigin, credentials: true });
+await app.register(cors, {
+  origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
+  credentials: true
+});
 await app.register(rateLimit, { max: 120, timeWindow: "1 minute" });
 await app.register(swagger, {
   openapi: {
@@ -1294,7 +1300,7 @@ app.get("/reports/summary", { preHandler: async (request, reply) => {
   return { data: { dailyVolume, deposits, withdrawals, loanPipeline, exceptions } };
 });
 
-const port = Number(process.env.API_PORT ?? 4000);
+const port = Number(process.env.PORT ?? process.env.API_PORT ?? 4000);
 app.listen({ port, host: "0.0.0.0" }).catch((error) => {
   app.log.error(error);
   process.exit(1);
