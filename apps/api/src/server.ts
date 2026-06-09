@@ -2,11 +2,13 @@ import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
-import Fastify from "fastify";
+import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import { config as loadEnv } from "dotenv";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 import {
+  customerSignupSchema,
   demoBankId,
   formatCurrency,
   kycSubmitSchema,
@@ -14,11 +16,10 @@ import {
   loanApplicationSchema,
   loginSchema,
   roleLabels,
-  roles,
   transferSchema,
   type Role
 } from "@bank/shared";
-import { hasPermission, signAccessToken, verifyAccessToken, verifyPassword, type AuthPrincipal } from "@bank/auth";
+import { hasPermission, hashPassword, signAccessToken, verifyAccessToken, verifyPassword, type AuthPrincipal } from "@bank/auth";
 import { PrismaClient } from "@bank/db";
 
 loadEnv({ path: resolve(dirname(fileURLToPath(import.meta.url)), "../../../.env") });
@@ -31,23 +32,13 @@ const app = Fastify({
 });
 
 const accessSecret = process.env.JWT_ACCESS_SECRET ?? "dev-access-secret";
-const refreshSecret = process.env.JWT_REFRESH_SECRET ?? "dev-refresh-secret";
 const corsOrigins = (process.env.CORS_ORIGIN ?? "http://localhost:3000")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
-const demoAuthEnabled = process.env.DEMO_AUTH_ENABLED === "true";
-const demoAuthPassword = process.env.DEMO_AUTH_PASSWORD ?? "Password123!";
-
-const demoLoginIdentities = {
-  PlatformAdmin: { email: "platform@bancuip.test", loginType: "STAFF" },
-  BankAdmin: { email: "admin@meridian.test", loginType: "STAFF" },
-  BranchManager: { email: "manager@meridian.test", loginType: "STAFF" },
-  Teller: { email: "teller@meridian.test", loginType: "STAFF" },
-  LoanOfficer: { email: "loan@meridian.test", loginType: "STAFF" },
-  Auditor: { email: "auditor@meridian.test", loginType: "STAFF" },
-  Customer: { email: "customer@meridian.test", loginType: "CUSTOMER" }
-} satisfies Record<Role, { email: string; loginType: "STAFF" | "CUSTOMER" }>;
+const statementQuerySchema = z.object({
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Month must be in YYYY-MM format")
+});
 
 async function createNotification(params: {
   userId?: string;
@@ -97,6 +88,18 @@ async function principalFromToken(token: string): Promise<AuthPrincipal | null> 
   }
 }
 
+async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
+  const auth = request.headers.authorization;
+  if (!auth?.startsWith("Bearer ")) {
+    return reply.code(401).send({ error: "Unauthorized" });
+  }
+  const principal = await principalFromToken(auth.slice(7));
+  if (!principal) {
+    return reply.code(401).send({ error: "Unauthorized" });
+  }
+  (request as any).principal = principal;
+}
+
 async function getUserFromDb(email: string) {
   return prisma.user.findUnique({
     where: { email: email.toLowerCase() },
@@ -109,9 +112,13 @@ async function getUserFromDb(email: string) {
   });
 }
 
-async function buildPrincipal(user: Awaited<ReturnType<typeof getUserFromDb>>): Promise<AuthPrincipal | null> {
+async function buildPrincipal(user: Awaited<ReturnType<typeof getUserFromDb>>, loginType?: "STAFF" | "CUSTOMER"): Promise<AuthPrincipal | null> {
   if (!user) return null;
-  const primaryRole = user.roles[0];
+  const primaryRole = loginType === "CUSTOMER"
+    ? user.roles.find((role) => role.role === "Customer")
+    : loginType === "STAFF"
+      ? user.roles.find((role) => role.role !== "Customer")
+      : user.roles[0];
   if (!primaryRole) return null;
   const auditorScope = user.roles.find((r) => r.role === "Auditor")?.auditorScope as "PLATFORM" | "BANK" | null | undefined;
   return {
@@ -130,6 +137,56 @@ function canAccessAccount(principal: AuthPrincipal, account: { bankId: string; c
     return account.customerId === principal.customerId || account.customer?.userId === principal.userId;
   }
   return principal.bankId === account.bankId;
+}
+
+function isUniqueConstraintError(error: unknown) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
+}
+
+function createAccountNumber() {
+  return `01${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 100).toString().padStart(2, "0")}`;
+}
+
+function createPublicHandle(email: string) {
+  const localPart = email.split("@")[0] ?? "customer";
+  const base = localPart
+    .toLowerCase()
+    .replace(/[^a-z0-9.-]+/g, ".")
+    .replace(/^[.-]+|[.-]+$/g, "")
+    .slice(0, 20) || "customer";
+  return `${base}.${Math.floor(Math.random() * 10000).toString().padStart(4, "0")}`;
+}
+
+function getMonthRange(month: string) {
+  const year = Number(month.slice(0, 4));
+  const monthNumber = Number(month.slice(5, 7));
+  const start = new Date(Date.UTC(year, monthNumber - 1, 1));
+  const end = new Date(Date.UTC(year, monthNumber, 1));
+  const label = new Intl.DateTimeFormat("en-IN", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC"
+  }).format(start);
+  return { start, end, label };
+}
+
+function transactionDirection(tx: { fromCustomerAccountId?: string | null; toCustomerAccountId?: string | null }, accountId: string) {
+  return tx.toCustomerAccountId === accountId ? "CREDIT" : "DEBIT";
+}
+
+function signedTransactionAmount(tx: { amount: unknown; fromCustomerAccountId?: string | null; toCustomerAccountId?: string | null }, accountId: string) {
+  const amount = Number(tx.amount);
+  return transactionDirection(tx, accountId) === "CREDIT" ? amount : -amount;
+}
+
+function transactionDescription(tx: { type: string; fromCustomerAccountId?: string | null; toCustomerAccountId?: string | null }, accountId: string) {
+  if (tx.type === "DEPOSIT") return "Cash deposit";
+  if (tx.type === "WITHDRAWAL") return "Cash withdrawal";
+  if (tx.type === "TRANSFER" || tx.type === "INTERBANK_TRANSFER") {
+    return transactionDirection(tx, accountId) === "CREDIT" ? "Transfer received" : "Transfer sent";
+  }
+  if (tx.type === "WELCOME_BONUS") return "Welcome bonus";
+  return tx.type.replaceAll("_", " ");
 }
 
 await app.register(cors, {
@@ -160,56 +217,247 @@ app.get("/health", async () => ({
   timestamp: new Date().toISOString()
 }));
 
-app.post("/auth/login", async (request, reply) => {
-  const body = loginSchema.parse(request.body);
-  const identifier = body.identifier.trim().toLowerCase();
-  const demoIdentity = Object.values(demoLoginIdentities).find((identity) => identity.email === identifier);
-  const isValidDemoLogin =
-    demoAuthEnabled &&
-    demoIdentity?.loginType === body.loginType &&
-    body.password === demoAuthPassword;
-  if (demoAuthEnabled && !isValidDemoLogin) {
-    return reply.code(401).send({ error: "Invalid credentials" });
+app.post("/auth/signup/customer", async (request, reply) => {
+  const body = customerSignupSchema.parse(request.body);
+  const existingUser = await prisma.user.findUnique({ where: { email: body.email } });
+  if (existingUser) {
+    return reply.code(409).send({ error: "An account already exists for this email" });
   }
 
-  const loginIdentifier = demoAuthEnabled ? demoIdentity?.email : identifier;
-  if (!loginIdentifier) {
-    return reply.code(401).send({ error: "Invalid credentials" });
+  const branch = await prisma.branch.findFirst({
+    where: { bankId: demoBankId },
+    orderBy: { createdAt: "asc" }
+  });
+  if (!branch) {
+    return reply.code(503).send({ error: "Customer signup is not available yet" });
   }
 
-  const user = await getUserFromDb(loginIdentifier);
-  
-  if (!user) {
-    return reply.code(401).send({ error: "Invalid credentials" });
+  const accountProduct = await prisma.accountProduct.findFirst({
+    where: { bankId: demoBankId, isActive: true, type: "SAVINGS" },
+    orderBy: { createdAt: "asc" }
+  }) ?? await prisma.accountProduct.findFirst({
+    where: { bankId: demoBankId, isActive: true },
+    orderBy: { createdAt: "asc" }
+  });
+  if (!accountProduct) {
+    return reply.code(503).send({ error: "Customer account opening is not available yet" });
   }
 
-  const isPasswordValid = isValidDemoLogin || await verifyPassword(user.passwordHash, body.password);
-  if (!isPasswordValid) {
-    return reply.code(401).send({ error: "Invalid credentials" });
+  try {
+    const passwordHash = await hashPassword(body.password);
+
+    await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          email: body.email,
+          phone: body.phone,
+          displayName: body.fullName,
+          passwordHash,
+          roles: {
+            create: {
+              role: "Customer",
+              bankId: demoBankId,
+              branchId: branch.id
+            }
+          },
+          customers: {
+            create: {
+              bankId: demoBankId,
+              branchId: branch.id,
+              fullName: body.fullName,
+              email: body.email,
+              phone: body.phone
+            }
+          }
+        },
+        include: { customers: true }
+      });
+
+      const customer = user.customers[0];
+      if (!customer) {
+        throw new Error("Customer profile was not created");
+      }
+
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        try {
+          const account = await tx.customerAccount.create({
+            data: {
+              bankId: demoBankId,
+              branchId: branch.id,
+              customerId: customer.id,
+              productId: accountProduct.id,
+              accountNumber: createAccountNumber(),
+              publicHandle: createPublicHandle(body.email),
+              balance: {
+                create: {
+                  ledgerBalance: 5000,
+                  availableBalance: 5000
+                }
+              }
+            }
+          });
+
+          const bonusTx = await tx.transaction.create({
+            data: {
+              bankId: demoBankId,
+              type: "WELCOME_BONUS",
+              status: "POSTED",
+              amount: 5000,
+              toCustomerAccountId: account.id,
+              initiatedByUserId: user.id
+            }
+          });
+
+          await tx.transactionEvent.create({
+            data: {
+              transactionId: bonusTx.id,
+              status: "POSTED",
+              note: "Welcome bonus"
+            }
+          });
+
+          return;
+        } catch (error) {
+          if (isUniqueConstraintError(error) && attempt < 4) {
+            continue;
+          }
+          throw error;
+        }
+      }
+
+      throw new Error("Could not allocate a unique account number");
+    }, { timeout: 15000 });
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return reply.code(409).send({ error: "An account already exists for this email or phone" });
+    }
+    throw error;
   }
 
-  const principal = await buildPrincipal(user);
-  if (!principal) {
-    return reply.code(401).send({ error: "Invalid credentials" });
+  const user = await getUserFromDb(body.email);
+  const principal = await buildPrincipal(user, "CUSTOMER");
+  if (!user || !principal) {
+    return reply.code(500).send({ error: "Customer signup failed" });
   }
+
+  const primaryRole = user.roles.find((role) => role.role === "Customer");
+  const account = principal.customerId
+    ? await prisma.customerAccount.findFirst({
+        where: { customerId: principal.customerId },
+        include: { product: true, balance: true },
+        orderBy: { createdAt: "desc" }
+      })
+    : null;
 
   const accessToken = await signAccessToken(principal, accessSecret);
-  const primaryRole = user.roles[0];
-  if (!primaryRole) {
-    return reply.code(401).send({ error: "Invalid credentials" });
-  }
 
-  return {
+  return reply.code(201).send({
     accessToken,
     user: {
       id: user.id,
       displayName: user.displayName,
-      role: primaryRole.role,
-      roleLabel: roleLabels[primaryRole.role as Role],
-      bankId: primaryRole.bankId,
-      bankName: primaryRole.bank?.name
+      role: "Customer",
+      roleLabel: roleLabels.Customer,
+      bankId: primaryRole?.bankId,
+      bankName: primaryRole?.bank?.name,
+      customerId: principal.customerId
+    },
+    account: account ? {
+      id: account.id,
+      accountNumber: account.accountNumber,
+      publicHandle: account.publicHandle,
+      product: account.product.name,
+      balance: Number(account.balance?.ledgerBalance ?? 0),
+      availableBalance: Number(account.balance?.availableBalance ?? 0)
+    } : null
+  });
+});
+
+const demoLoginIdentities: Record<string, { email: string; loginType: "STAFF" | "CUSTOMER" }> = {
+  PlatformAdmin: { email: "platform@bancuip.test", loginType: "STAFF" },
+  BankAdmin: { email: "admin@meridian.test", loginType: "STAFF" },
+  BranchManager: { email: "manager@meridian.test", loginType: "STAFF" },
+  Teller: { email: "teller@meridian.test", loginType: "STAFF" },
+  LoanOfficer: { email: "loan@meridian.test", loginType: "STAFF" },
+  Auditor: { email: "auditor@meridian.test", loginType: "STAFF" },
+  Customer: { email: "customer@meridian.test", loginType: "CUSTOMER" }
+};
+
+const demoAuthPassword = process.env.DEMO_AUTH_PASSWORD ?? "Password123!";
+
+app.post("/auth/login", async (request, reply) => {
+  try {
+    const body = loginSchema.parse(request.body);
+    const identifier = body.identifier.trim().toLowerCase();
+
+    const demoIdentity = Object.values(demoLoginIdentities).find((identity) => identity.email === identifier);
+    const user = await getUserFromDb(identifier).catch(() => null);
+
+    if (user && user.status === "ACTIVE") {
+      const hasCustomerRole = user.roles.some((role) => role.role === "Customer");
+      const hasStaffRole = user.roles.some((role) => role.role !== "Customer");
+      const canUseLoginType = body.loginType === "CUSTOMER" ? hasCustomerRole : hasStaffRole;
+      if (!canUseLoginType) {
+        return reply.code(401).send({ error: "Invalid credentials" });
+      }
+
+      const isPasswordValid = await verifyPassword(user.passwordHash, body.password);
+      if (!isPasswordValid) {
+        return reply.code(401).send({ error: "Invalid credentials" });
+      }
+
+      const principal = await buildPrincipal(user, body.loginType);
+      if (!principal) {
+        return reply.code(401).send({ error: "Invalid credentials" });
+      }
+
+      const accessToken = await signAccessToken(principal, accessSecret);
+      const primaryRole = body.loginType === "CUSTOMER"
+        ? user.roles.find((role) => role.role === "Customer")
+        : user.roles.find((role) => role.role !== "Customer");
+
+      return {
+        accessToken,
+        user: {
+          id: user.id,
+          displayName: user.displayName,
+          role: primaryRole!.role,
+          roleLabel: roleLabels[primaryRole!.role as Role],
+          bankId: primaryRole!.bankId,
+          bankName: primaryRole!.bank?.name,
+          customerId: principal.customerId
+        }
+      };
     }
-  };
+
+    if (demoIdentity && body.password === demoAuthPassword) {
+      const demoRole = Object.entries(demoLoginIdentities).find(([, v]) => v.email === identifier)?.[0] as Role | undefined;
+      if (demoRole && demoIdentity.loginType === body.loginType) {
+        const demoPrincipal: AuthPrincipal = {
+          userId: `demo-${demoRole}`,
+          ...(demoRole !== "PlatformAdmin" ? { bankId: demoBankId } : {}),
+          roles: [demoRole]
+        };
+        const accessToken = await signAccessToken(demoPrincipal, accessSecret);
+        return {
+          accessToken,
+          user: {
+            id: `demo-${demoRole}`,
+            displayName: demoRole === "Customer" ? "Amanda Kayle" : roleLabels[demoRole],
+            role: demoRole,
+            roleLabel: roleLabels[demoRole],
+            bankId: demoRole === "PlatformAdmin" ? undefined : demoBankId,
+            bankName: demoRole === "PlatformAdmin" ? undefined : "Meridian Cooperative Bank"
+          }
+        };
+      }
+    }
+
+    return reply.code(401).send({ error: "Invalid credentials" });
+  } catch (error) {
+    request.log.error(error, "Login failed");
+    return reply.code(500).send({ error: "Login service is temporarily unavailable" });
+  }
 });
 
 app.get("/auth/me", { preHandler: async (request, reply) => {
@@ -226,7 +474,7 @@ app.get("/auth/me", { preHandler: async (request, reply) => {
   const principal = (request as any).principal;
   const user = await prisma.user.findUnique({
     where: { id: principal.userId },
-    include: { roles: { include: { bank: true } } }
+    include: { customers: true, roles: { include: { bank: true } } }
   });
   if (!user) throw new Error("User not found");
   const primaryRole = user.roles[0];
@@ -237,18 +485,10 @@ app.get("/auth/me", { preHandler: async (request, reply) => {
     role: primaryRole.role,
     roleLabel: roleLabels[primaryRole.role as Role],
     bankId: primaryRole.bankId,
-    bankName: primaryRole.bank?.name
+    bankName: primaryRole.bank?.name,
+    customerId: user.customers[0]?.id
   };
 });
-
-app.get("/session/demo-roles", async () => ({
-  roles: roles.map((role) => ({
-    role,
-    label: roleLabels[role],
-    demoEmail: demoLoginIdentities[role].email,
-    loginType: demoLoginIdentities[role].loginType
-  }))
-}));
 
 app.get("/banks", async () => {
   const banks = await prisma.bank.findMany({
@@ -272,27 +512,48 @@ app.get("/dashboard", { preHandler: async (request, reply) => {
 }}, async (request) => {
   const principal = (request as any).principal;
   const bankId = principal.bankId ?? demoBankId;
+  const isCustomer = principal.roles.includes("Customer");
+  const accountWhere = isCustomer
+    ? { bankId, customerId: principal.customerId ?? "00000000-0000-4000-8000-000000000000" }
+    : { bankId };
 
-  const [accounts, transactions, kycCases, loanApplications, bank] = await Promise.all([
+  const [accounts, kycCases, loanApplications, bank] = await Promise.all([
     prisma.customerAccount.findMany({
-      where: { bankId },
+      where: accountWhere,
       include: { balance: true, customer: true, product: true }
     }),
-    prisma.transaction.findMany({
-      where: { bankId },
-      orderBy: { createdAt: "desc" },
-      take: 50
-    }),
     prisma.customerKyc.findMany({
-      where: { bankId, status: { in: ["SUBMITTED", "IN_REVIEW", "NEEDS_MORE_INFO"] } },
+      where: {
+        bankId,
+        ...(isCustomer ? { customerId: principal.customerId ?? "00000000-0000-4000-8000-000000000000" } : {}),
+        status: { in: ["SUBMITTED", "IN_REVIEW", "NEEDS_MORE_INFO"] }
+      },
       include: { customer: true }
     }),
     prisma.loanApplication.findMany({
-      where: { bankId, status: { in: ["SUBMITTED", "IN_REVIEW"] } },
+      where: {
+        bankId,
+        ...(isCustomer ? { customerId: principal.customerId ?? "00000000-0000-4000-8000-000000000000" } : {}),
+        status: { in: ["SUBMITTED", "IN_REVIEW"] }
+      },
       include: { customer: true, product: true }
     }),
     prisma.bank.findUnique({ where: { id: bankId } })
   ]);
+  const accountIds = accounts.map((account) => account.id);
+  const transactions = await prisma.transaction.findMany({
+    where: isCustomer
+      ? {
+          bankId,
+          OR: [
+            { fromCustomerAccountId: { in: accountIds } },
+            { toCustomerAccountId: { in: accountIds } }
+          ]
+        }
+      : { bankId },
+    orderBy: { createdAt: "desc" },
+    take: 50
+  });
 
   const totalBalance = accounts.reduce((sum, acc) => sum + Number(acc.balance?.ledgerBalance ?? 0), 0);
   const postedVolume = transactions.filter((tx) => tx.status === "POSTED").reduce((sum, tx) => sum + Number(tx.amount), 0);
@@ -443,6 +704,103 @@ app.get<{ Params: { accountId: string } }>("/accounts/:accountId/transactions", 
     to: tx.toCustomerAccountId,
     createdAt: tx.createdAt.toISOString()
   })) };
+});
+
+app.get<{ Params: { accountId: string }; Querystring: { month?: string } }>("/accounts/:accountId/statement", { preHandler: requireAuth }, async (request, reply) => {
+  const principal = (request as any).principal as AuthPrincipal;
+  const { accountId } = request.params;
+  const parsedQuery = statementQuerySchema.safeParse(request.query);
+
+  if (!parsedQuery.success) {
+    return reply.code(400).send({ error: parsedQuery.error.issues[0]?.message ?? "Invalid statement month" });
+  }
+
+  const account = await prisma.customerAccount.findUnique({
+    where: { id: accountId },
+    include: { balance: true, customer: true, product: true, bank: true }
+  });
+
+  if (!account || !canAccessAccount(principal, account)) {
+    return reply.code(404).send({ error: "Account not found" });
+  }
+
+  const { start, end, label } = getMonthRange(parsedQuery.data.month);
+  const whereForAccount = {
+    OR: [
+      { fromCustomerAccountId: accountId },
+      { toCustomerAccountId: accountId }
+    ]
+  };
+
+  const [transactions, afterMonthTransactions] = await Promise.all([
+    prisma.transaction.findMany({
+      where: {
+        ...whereForAccount,
+        status: "POSTED",
+        createdAt: { gte: start, lt: end }
+      },
+      orderBy: { createdAt: "asc" }
+    }),
+    prisma.transaction.findMany({
+      where: {
+        ...whereForAccount,
+        status: "POSTED",
+        createdAt: { gte: end }
+      }
+    })
+  ]);
+
+  const totalCredit = transactions
+    .filter((tx) => transactionDirection(tx, accountId) === "CREDIT")
+    .reduce((sum, tx) => sum + Number(tx.amount), 0);
+  const totalDebit = transactions
+    .filter((tx) => transactionDirection(tx, accountId) === "DEBIT")
+    .reduce((sum, tx) => sum + Number(tx.amount), 0);
+  const netAfterMonth = afterMonthTransactions.reduce((sum, tx) => sum + signedTransactionAmount(tx, accountId), 0);
+  const closingBalance = Number(account.balance?.ledgerBalance ?? 0) - netAfterMonth;
+  const openingBalance = closingBalance - (totalCredit - totalDebit);
+  let runningBalance = openingBalance;
+
+  return {
+    data: {
+      month: parsedQuery.data.month,
+      monthLabel: label,
+      account: {
+        id: account.id,
+        bankName: account.bank.name,
+        customerName: account.customer.fullName,
+        accountNumber: account.accountNumber,
+        publicHandle: account.publicHandle,
+        product: account.product.name,
+        status: account.accountStatus,
+        currentBalance: Number(account.balance?.ledgerBalance ?? 0),
+        availableBalance: Number(account.balance?.availableBalance ?? 0)
+      },
+      summary: {
+        openingBalance,
+        totalCredit,
+        totalDebit,
+        closingBalance
+      },
+      transactions: transactions.map((tx) => {
+        const balanceImpact = signedTransactionAmount(tx, accountId);
+        runningBalance += balanceImpact;
+        return {
+          id: tx.id,
+          date: tx.createdAt.toISOString(),
+          description: transactionDescription(tx, accountId),
+          type: tx.type,
+          status: tx.status,
+          direction: transactionDirection(tx, accountId),
+          amount: Number(tx.amount),
+          balanceImpact,
+          runningBalance,
+          from: tx.fromCustomerAccountId,
+          to: tx.toCustomerAccountId
+        };
+      })
+    }
+  };
 });
 
 app.post("/transactions/transfer", { preHandler: async (request, reply) => {
@@ -756,6 +1114,9 @@ app.get("/kyc/cases", { preHandler: async (request, reply) => {
   if (!principal) {
     return reply.code(401).send({ error: "Unauthorized" });
   }
+  if (!hasPermission(principal, "kyc:manage")) {
+    return reply.code(403).send({ error: "Forbidden" });
+  }
   (request as any).principal = principal;
 }}, async (request) => {
   const principal = (request as any).principal;
@@ -783,6 +1144,9 @@ app.post("/kyc/submit", { preHandler: async (request, reply) => {
   const principal = await principalFromToken(auth.slice(7));
   if (!principal) {
     return reply.code(401).send({ error: "Unauthorized" });
+  }
+  if (!hasPermission(principal, "kyc:manage")) {
+    return reply.code(403).send({ error: "Forbidden" });
   }
   (request as any).principal = principal;
 }}, async (request, reply) => {
@@ -853,6 +1217,10 @@ app.post("/kyc/submit", { preHandler: async (request, reply) => {
   return reply.code(201).send({ data: kyc });
 });
 
+const kycReviewSchema = z.object({
+  notes: z.string().max(500).optional()
+});
+
 app.post<{ Params: { caseId: string; decision: string } }>("/kyc/cases/:caseId/:decision", { preHandler: async (request, reply) => {
   const auth = request.headers.authorization;
   if (!auth?.startsWith("Bearer ")) {
@@ -862,10 +1230,15 @@ app.post<{ Params: { caseId: string; decision: string } }>("/kyc/cases/:caseId/:
   if (!principal) {
     return reply.code(401).send({ error: "Unauthorized" });
   }
+  if (!hasPermission(principal, "kyc:manage")) {
+    return reply.code(403).send({ error: "Forbidden" });
+  }
   (request as any).principal = principal;
 }}, async (request, reply) => {
   const principal = (request as any).principal;
   const { caseId, decision } = request.params;
+  const body = kycReviewSchema.parse(request.body || {});
+  const notes = body.notes;
 
   const kyc = await prisma.customerKyc.findUnique({
     where: { id: caseId },
@@ -888,7 +1261,8 @@ app.post<{ Params: { caseId: string; decision: string } }>("/kyc/cases/:caseId/:
       lastReviewedByUserId: principal.userId,
       lastReviewedAt: new Date(),
       approvedAt: newStatus === "APPROVED" ? new Date() : null,
-      rejectedAt: newStatus === "REJECTED" ? new Date() : null
+      rejectedAt: newStatus === "REJECTED" ? new Date() : null,
+      ...(newStatus === "REJECTED" ? { rejectionReasonText: notes || null } : {})
     }
   });
 
@@ -898,7 +1272,8 @@ app.post<{ Params: { caseId: string; decision: string } }>("/kyc/cases/:caseId/:
       customerId: kyc.customerId,
       kycId: caseId,
       reviewedByUserId: principal.userId,
-      action: newStatus === "APPROVED" ? "APPROVE" : newStatus === "REJECTED" ? "REJECT" : "REQUEST_INFO"
+      action: newStatus === "APPROVED" ? "APPROVE" : newStatus === "REJECTED" ? "REJECT" : "REQUEST_INFO",
+      ...(notes ? { notes } : {})
     }
   });
 
@@ -911,7 +1286,7 @@ app.post<{ Params: { caseId: string; decision: string } }>("/kyc/cases/:caseId/:
       message: newStatus === "APPROVED" 
         ? "Your KYC has been approved. You can now access all banking features."
         : newStatus === "REJECTED"
-          ? "Your KYC has been rejected. Please contact support for more information."
+          ? notes ? `Your KYC has been rejected: ${notes}` : "Your KYC has been rejected. Please contact support for more information."
           : "Additional information is required for your KYC verification.",
       metadata: { kycId: caseId }
     });
@@ -923,7 +1298,7 @@ app.post<{ Params: { caseId: string; decision: string } }>("/kyc/cases/:caseId/:
     action: `KYC_${newStatus}`,
     resource: "customer_kyc",
     resourceId: caseId,
-    metadata: { customerId: kyc.customerId }
+    metadata: { customerId: kyc.customerId, notes }
   });
 
   return { data: { ...kyc, status: newStatus } };
@@ -965,8 +1340,12 @@ app.get("/loans/applications", { preHandler: async (request, reply) => {
   (request as any).principal = principal;
 }}, async (request) => {
   const principal = (request as any).principal;
+  const canManage = hasPermission(principal, "loans:manage");
   const applications = await prisma.loanApplication.findMany({
-    where: { bankId: principal.bankId ?? demoBankId },
+    where: {
+      bankId: principal.bankId ?? demoBankId,
+      ...(!canManage && principal.customerId ? { customerId: principal.customerId } : {})
+    },
     include: { customer: true, product: true }
   });
   return { data: applications.map((app) => ({
@@ -1060,6 +1439,72 @@ app.post("/loans/applications", { preHandler: async (request, reply) => {
   return reply.code(201).send({ data: application });
 });
 
+app.post<{ Params: { applicationId: string; decision: string } }>("/loans/applications/:applicationId/:decision", { preHandler: async (request, reply) => {
+  const auth = request.headers.authorization;
+  if (!auth?.startsWith("Bearer ")) {
+    return reply.code(401).send({ error: "Unauthorized" });
+  }
+  const principal = await principalFromToken(auth.slice(7));
+  if (!principal || !hasPermission(principal, "loans:approve")) {
+    return reply.code(403).send({ error: "Forbidden" });
+  }
+  (request as any).principal = principal;
+}}, async (request, reply) => {
+  const principal = (request as any).principal;
+  const { applicationId, decision } = request.params;
+
+  const application = await prisma.loanApplication.findUnique({
+    where: { id: applicationId },
+    include: { customer: true }
+  });
+
+  if (!application) {
+    return reply.code(404).send({ error: "Loan application not found" });
+  }
+
+  if (application.status !== "SUBMITTED" && application.status !== "IN_REVIEW") {
+    return reply.code(400).send({ error: "Application is not in a reviewable state" });
+  }
+
+  let newStatus: "APPROVED" | "REJECTED";
+  if (decision === "approve") {
+    newStatus = "APPROVED";
+  } else if (decision === "reject") {
+    newStatus = "REJECTED";
+  } else {
+    return reply.code(400).send({ error: "Invalid decision. Use 'approve' or 'reject'" });
+  }
+
+  await prisma.loanApplication.update({
+    where: { id: applicationId },
+    data: { status: newStatus }
+  });
+
+  if (application.customer.userId) {
+    await createNotification({
+      userId: application.customer.userId,
+      bankId: application.bankId,
+      type: newStatus === "APPROVED" ? "LOAN_APPROVED" : "LOAN_REJECTED",
+      title: newStatus === "APPROVED" ? "Loan approved" : "Loan rejected",
+      message: newStatus === "APPROVED"
+        ? `Your ${formatCurrency(Number(application.requestedAmount))} loan application has been approved.`
+        : `Your ${formatCurrency(Number(application.requestedAmount))} loan application has been rejected.`,
+      metadata: { applicationId: application.id }
+    });
+  }
+
+  await logAudit({
+    bankId: application.bankId,
+    actorUserId: principal.userId,
+    action: newStatus === "APPROVED" ? "LOAN_APPROVED" : "LOAN_REJECTED",
+    resource: "loan_application",
+    resourceId: application.id,
+    metadata: { customerId: application.customerId, amount: Number(application.requestedAmount) }
+  });
+
+  return { data: { ...application, status: newStatus } };
+});
+
 app.post("/limits/requests", { preHandler: async (request, reply) => {
   const auth = request.headers.authorization;
   if (!auth?.startsWith("Bearer ")) {
@@ -1120,6 +1565,83 @@ app.post("/limits/requests", { preHandler: async (request, reply) => {
   }
 
   return reply.code(201).send({ data: requestRecord });
+});
+
+app.post<{ Params: { requestId: string; decision: string } }>("/limits/requests/:requestId/:decision", { preHandler: async (request, reply) => {
+  const auth = request.headers.authorization;
+  if (!auth?.startsWith("Bearer ")) {
+    return reply.code(401).send({ error: "Unauthorized" });
+  }
+  const principal = await principalFromToken(auth.slice(7));
+  if (!principal || !hasPermission(principal, "branches:manage")) {
+    return reply.code(403).send({ error: "Forbidden" });
+  }
+  (request as any).principal = principal;
+}}, async (request, reply) => {
+  const principal = (request as any).principal;
+  const { requestId, decision } = request.params;
+
+  const limitRequest = await prisma.limitChangeRequest.findUnique({
+    where: { id: requestId },
+    include: { customer: true }
+  });
+
+  if (!limitRequest) {
+    return reply.code(404).send({ error: "Limit change request not found" });
+  }
+
+  if (limitRequest.status !== "PENDING") {
+    return reply.code(400).send({ error: "Request is not in a reviewable state" });
+  }
+
+  let newStatus: "APPROVED" | "REJECTED";
+  if (decision === "approve") {
+    newStatus = "APPROVED";
+  } else if (decision === "reject") {
+    newStatus = "REJECTED";
+  } else {
+    return reply.code(400).send({ error: "Invalid decision. Use 'approve' or 'reject'" });
+  }
+
+  await prisma.limitChangeRequest.update({
+    where: { id: requestId },
+    data: {
+      status: newStatus,
+      reviewedByUserId: principal.userId,
+      reviewedAt: new Date()
+    }
+  });
+
+  if (newStatus === "APPROVED") {
+    await prisma.customer.update({
+      where: { id: limitRequest.customerId },
+      data: { dailyLimit: limitRequest.requestedDailyLimit }
+    });
+  }
+
+  if (limitRequest.customer.userId) {
+    await createNotification({
+      userId: limitRequest.customer.userId,
+      bankId: limitRequest.bankId,
+      type: newStatus === "APPROVED" ? "LIMIT_INCREASE_APPROVED" : "LIMIT_INCREASE_REJECTED",
+      title: newStatus === "APPROVED" ? "Limit increase approved" : "Limit increase rejected",
+      message: newStatus === "APPROVED"
+        ? `Your daily transfer limit has been increased to ${formatCurrency(Number(limitRequest.requestedDailyLimit))}.`
+        : `Your limit increase request has been rejected.`,
+      metadata: { requestId: limitRequest.id }
+    });
+  }
+
+  await logAudit({
+    bankId: limitRequest.bankId,
+    actorUserId: principal.userId,
+    action: newStatus === "APPROVED" ? "LIMIT_INCREASE_APPROVED" : "LIMIT_INCREASE_REJECTED",
+    resource: "limit_change_request",
+    resourceId: limitRequest.id,
+    metadata: { customerId: limitRequest.customerId, requestedLimit: Number(limitRequest.requestedDailyLimit) }
+  });
+
+  return { data: { ...limitRequest, status: newStatus } };
 });
 
 app.get("/notifications", { preHandler: async (request, reply) => {

@@ -29,6 +29,41 @@ export interface TransactionSummary {
   description?: string;
 }
 
+export interface BankStatement {
+  month: string;
+  monthLabel: string;
+  account: {
+    id: string;
+    bankName: string;
+    customerName: string;
+    accountNumber: string;
+    publicHandle?: string | null;
+    product: string;
+    status: string;
+    currentBalance: number;
+    availableBalance: number;
+  };
+  summary: {
+    openingBalance: number;
+    totalCredit: number;
+    totalDebit: number;
+    closingBalance: number;
+  };
+  transactions: Array<{
+    id: string;
+    date: string;
+    description: string;
+    type: string;
+    status: string;
+    direction: "CREDIT" | "DEBIT";
+    amount: number;
+    balanceImpact: number;
+    runningBalance: number;
+    from?: string | null;
+    to?: string | null;
+  }>;
+}
+
 export interface CustomerSummary {
   id: string;
   bankId: string;
@@ -37,6 +72,16 @@ export interface CustomerSummary {
   phone: string;
   kycStatus: string;
   dailyLimit: number;
+}
+
+interface AuthUser {
+  id: string;
+  displayName: string;
+  role: string;
+  roleLabel: string;
+  bankId: string;
+  bankName: string;
+  customerId?: string;
 }
 
 function getAuthHeader(): string | null {
@@ -82,11 +127,28 @@ function unwrapData<T>(response: ApiResponse<{ data: T }>): ApiResponse<T> {
 }
 
 export async function login(identifier: string, password: string, loginType: "STAFF" | "CUSTOMER") {
-  const res = await apiFetch<{ accessToken: string; user: { id: string; displayName: string; role: string; roleLabel: string; bankId: string; bankName: string } }>(
+  const res = await apiFetch<{ accessToken: string; user: AuthUser }>(
     "/auth/login",
     {
       method: "POST",
       body: JSON.stringify({ identifier, password, loginType })
+    }
+  );
+
+  if (res.data?.accessToken) {
+    localStorage.setItem("auth_token", res.data.accessToken);
+    localStorage.setItem("auth_user", JSON.stringify(res.data.user));
+  }
+
+  return res;
+}
+
+export async function signupCustomer(data: { fullName: string; email: string; phone: string; password: string }) {
+  const res = await apiFetch<{ accessToken: string; user: AuthUser }>(
+    "/auth/signup/customer",
+    {
+      method: "POST",
+      body: JSON.stringify(data)
     }
   );
 
@@ -111,6 +173,7 @@ export function logout() {
 
 export const api = {
   login,
+  signupCustomer,
   logout,
   getStoredUser,
   
@@ -119,6 +182,8 @@ export const api = {
   getCustomers: async () => unwrapData<CustomerSummary[]>(await apiFetch<{ data: CustomerSummary[] }>("/customers")),
   getAccounts: async () => unwrapData<AccountSummary[]>(await apiFetch<{ data: AccountSummary[] }>("/accounts")),
   getAccountTransactions: async (accountId: string) => unwrapData<TransactionSummary[]>(await apiFetch<{ data: TransactionSummary[] }>(`/accounts/${accountId}/transactions`)),
+  getStatement: async (accountId: string, month: string) =>
+    unwrapData<BankStatement>(await apiFetch<{ data: BankStatement }>(`/accounts/${accountId}/statement?month=${encodeURIComponent(month)}`)),
   
   transfer: (data: { fromAccountId: string; recipientType: string; recipient: string; ifscCode?: string | undefined; amount: number; note?: string | undefined; actedOnBehalf?: boolean }) => 
     apiFetch<any>("/transactions/transfer", { method: "POST", body: JSON.stringify(data) }),
@@ -130,8 +195,8 @@ export const api = {
   
   getKycCases: async () => unwrapData<any[]>(await apiFetch<{ data: any[] }>("/kyc/cases")),
   submitKyc: (data: any) => apiFetch<any>("/kyc/submit", { method: "POST", body: JSON.stringify(data) }),
-  reviewKyc: (caseId: string, decision: "approve" | "reject" | "request-info") => 
-    apiFetch<any>(`/kyc/cases/${caseId}/${decision}`, { method: "POST" }),
+  reviewKyc: (caseId: string, decision: "approve" | "reject" | "request-info", notes?: string) => 
+    apiFetch<any>(`/kyc/cases/${caseId}/${decision}`, { method: "POST", body: JSON.stringify({ notes }) }),
   
   getLoanProducts: async () => unwrapData<any[]>(await apiFetch<{ data: any[] }>("/loans/products")),
   getLoanApplications: async () => unwrapData<any[]>(await apiFetch<{ data: any[] }>("/loans/applications")),

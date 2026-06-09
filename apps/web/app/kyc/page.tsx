@@ -16,6 +16,8 @@ export default function KycPage() {
   const [user, setUser] = useState<{ role: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
+  const [confirmReject, setConfirmReject] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
   const [form, setForm] = useState({
     customerId: "",
     legalName: "",
@@ -43,9 +45,10 @@ export default function KycPage() {
     });
   }, [router]);
 
-  async function refreshCases() {
-    const result = await api.getKycCases();
-    setCases(result.data ?? []);
+  async function refreshAll() {
+    const [customersResult, casesResult] = await Promise.all([api.getCustomers(), api.getKycCases()]);
+    setCustomers(customersResult.data ?? []);
+    setCases(casesResult.data ?? []);
   }
 
   async function submitKyc(e: React.FormEvent) {
@@ -55,79 +58,56 @@ export default function KycPage() {
     const result = await api.submitKyc(form);
     setMessage(result.error ?? "KYC submitted for review.");
     setSubmitting(false);
-    await refreshCases();
+    await refreshAll();
   }
 
-  async function review(caseId: string, decision: "approve" | "reject" | "request-info") {
-    const result = await api.reviewKyc(caseId, decision);
+  async function review(caseId: string, decision: "approve" | "reject" | "request-info", notes?: string) {
+    setMessage("");
+    const result = await api.reviewKyc(caseId, decision, notes);
     setMessage(result.error ?? "KYC decision saved.");
-    await refreshCases();
+    setConfirmReject(null);
+    setRejectReason("");
+    await refreshAll();
   }
+
+  function handleRejectClick(caseId: string) {
+    setConfirmReject(caseId);
+    setRejectReason("");
+  }
+
+  function confirmRejectAction() {
+    if (confirmReject) {
+      review(confirmReject, "reject", rejectReason);
+    }
+  }
+
+  const isStaff = user?.role && ["BankAdmin", "BranchManager"].includes(user.role);
 
   return (
     <AppShell title="KYC" description="Strict KYC gate for transfers, limit increases, and loan submissions." active="/kyc" role={user?.role as Role | undefined}>
       <div className="mb-5 grid gap-4 md:grid-cols-3">
         <KycInsight icon={Users} label="Customers" value={String(customers.length)} />
         <KycInsight icon={FileCheck2} label="Open cases" value={String(cases.filter((item) => !["APPROVED", "REJECTED"].includes(item.status)).length)} />
-        <KycInsight icon={ShieldCheck} label="Control" value="Masked docs" />
+        <KycInsight icon={ShieldCheck} label="Approved" value={String(cases.filter((item) => item.status === "APPROVED").length)} />
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-        <form className="panel grid gap-5 p-6" onSubmit={submitKyc}>
-          <div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-teal-50 text-teal-600">
-              <UserCheck className="h-6 w-6" />
-            </div>
-            <h2 className="mt-4 text-xl font-semibold text-ink">Submit KYC</h2>
-            <p className="mt-1 text-sm text-muted">Create a review case using customer profile and masked document details.</p>
-          </div>
-          <div className="grid gap-2">
-            <label className="label">Customer</label>
-            <select className="field" value={form.customerId} onChange={(e) => {
-              const customer = customers.find((item) => item.id === e.target.value);
-              setForm({ ...form, customerId: e.target.value, legalName: customer?.name ?? form.legalName });
-            }}>
-              {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>{customer.name}</option>
-              ))}
-            </select>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="grid gap-2">
-              <label className="label">Legal name</label>
-              <input className="field" value={form.legalName} onChange={(e) => setForm({ ...form, legalName: e.target.value })} placeholder="Legal name" />
-            </div>
-            <div className="grid gap-2">
-              <label className="label">Date of birth</label>
-              <input className="field" type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} />
-            </div>
-            <div className="grid gap-2 md:col-span-2">
-              <label className="label">Address</label>
-              <input className="field" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Address" />
-            </div>
-            <div className="grid gap-2">
-              <label className="label">Document</label>
-              <select className="field" value={form.documentType} onChange={(e) => setForm({ ...form, documentType: e.target.value })}>
-                <option value="PAN">PAN</option>
-                <option value="AADHAAR">Aadhaar</option>
-                <option value="PASSPORT">Passport</option>
-                <option value="DRIVER_LICENSE">Driver license</option>
-              </select>
-            </div>
-            <div className="grid gap-2">
-              <label className="label">Document last 4</label>
-              <input className="field" maxLength={4} value={form.documentNumberLast4} onChange={(e) => setForm({ ...form, documentNumberLast4: e.target.value })} placeholder="Document last 4" />
-            </div>
-          </div>
-          {message ? <div className="rounded-xl border border-line bg-slate-50 p-3 text-sm text-slate-700">{message}</div> : null}
-          <Button type="submit" className="w-fit" disabled={submitting || !form.customerId}>
-            {submitting ? "Submitting..." : "Submit KYC"}
-          </Button>
-        </form>
+      {message ? (
+        <div className="mb-5 rounded-xl border border-line bg-slate-50 p-3 text-sm text-slate-700">{message}</div>
+      ) : null}
+
+      <div className="grid gap-5 xl:grid-cols-[1.3fr_0.7fr]">
         <div className="panel p-6">
-          <div className="mb-4">
-            <h2 className="text-xl font-semibold text-ink">KYC review cases</h2>
-            <p className="mt-1 text-sm text-muted">Review queue, document hints, and customer limits.</p>
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-ink">KYC review cases</h2>
+              <p className="mt-1 text-sm text-muted">Review and decide on pending KYC submissions.</p>
+            </div>
+            <button
+              className="text-xs font-semibold text-teal-700 hover:text-teal-800"
+              onClick={refreshAll}
+            >
+              Refresh
+            </button>
           </div>
           <DataTable
             columns={["Customer", "Status", "Submitted", "Document", "Action"]}
@@ -138,8 +118,9 @@ export default function KycPage() {
               Document: item.documentType ? `${item.documentType} ending ${item.documentNumberLast4}` : "-",
               Action: item.status === "APPROVED" || item.status === "REJECTED" ? "-" : (
                 <div className="flex gap-2">
-                  <button className="text-xs font-semibold text-emerald-700" onClick={() => review(item.id, "approve")}>Approve</button>
-                  <button className="text-xs font-semibold text-amber-700" onClick={() => review(item.id, "request-info")}>More info</button>
+                  <button className="text-xs font-semibold text-emerald-700 hover:text-emerald-800" onClick={() => review(item.id, "approve")}>Approve</button>
+                  <button className="text-xs font-semibold text-red-700 hover:text-red-800" onClick={() => handleRejectClick(item.id)}>Reject</button>
+                  <button className="text-xs font-semibold text-amber-700 hover:text-amber-800" onClick={() => review(item.id, "request-info")}>More info</button>
                 </div>
               )
             }))}
@@ -157,7 +138,90 @@ export default function KycPage() {
             ))}
           </div>
         </div>
+
+        {isStaff && (
+          <form className="panel grid gap-5 p-6 h-fit" onSubmit={submitKyc}>
+            <div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-teal-50 text-teal-600">
+                <UserCheck className="h-6 w-6" />
+              </div>
+              <h2 className="mt-4 text-xl font-semibold text-ink">Submit KYC</h2>
+              <p className="mt-1 text-sm text-muted">Create a review case using customer profile and masked document details.</p>
+            </div>
+            <div className="grid gap-2">
+              <label className="label">Customer</label>
+              <select className="field" value={form.customerId} onChange={(e) => {
+                const customer = customers.find((item) => item.id === e.target.value);
+                setForm({ ...form, customerId: e.target.value, legalName: customer?.name ?? form.legalName });
+              }}>
+                {customers.map((customer) => (
+                  <option key={customer.id} value={customer.id}>{customer.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-2">
+                <label className="label">Legal name</label>
+                <input className="field" value={form.legalName} onChange={(e) => setForm({ ...form, legalName: e.target.value })} placeholder="Legal name" />
+              </div>
+              <div className="grid gap-2">
+                <label className="label">Date of birth</label>
+                <input className="field" type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} />
+              </div>
+              <div className="grid gap-2 md:col-span-2">
+                <label className="label">Address</label>
+                <input className="field" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Address" />
+              </div>
+              <div className="grid gap-2">
+                <label className="label">Document</label>
+                <select className="field" value={form.documentType} onChange={(e) => setForm({ ...form, documentType: e.target.value })}>
+                  <option value="PAN">PAN</option>
+                  <option value="AADHAAR">Aadhaar</option>
+                  <option value="PASSPORT">Passport</option>
+                  <option value="DRIVER_LICENSE">Driver license</option>
+                </select>
+              </div>
+              <div className="grid gap-2">
+                <label className="label">Document last 4</label>
+                <input className="field" maxLength={4} value={form.documentNumberLast4} onChange={(e) => setForm({ ...form, documentNumberLast4: e.target.value })} placeholder="Document last 4" />
+              </div>
+            </div>
+            <Button type="submit" className="w-fit" disabled={submitting || !form.customerId}>
+              {submitting ? "Submitting..." : "Submit KYC"}
+            </Button>
+          </form>
+        )}
       </div>
+
+      {confirmReject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-md rounded-2xl border border-line bg-white p-6 shadow-panel">
+            <h3 className="text-lg font-semibold text-ink">Reject KYC</h3>
+            <p className="mt-1 text-sm text-muted">Provide a reason for rejecting this KYC application.</p>
+            <textarea
+              className="field mt-4 min-h-[100px] w-full"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Rejection reason..."
+            />
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                onClick={() => setConfirmReject(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                onClick={confirmRejectAction}
+                disabled={!rejectReason.trim()}
+              >
+                Confirm reject
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }
