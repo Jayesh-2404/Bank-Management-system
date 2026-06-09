@@ -1,46 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Landmark, ShieldCheck, WalletCards } from "lucide-react";
 import { Button } from "@/components/button";
-import { roleLabels, type Role } from "@bank/shared";
 import { login } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 type LoginType = "STAFF" | "CUSTOMER";
 
-const demoIdentities: Record<Role, { email: string; loginType: LoginType }> = {
-  PlatformAdmin: { email: "platform@bancuip.test", loginType: "STAFF" },
-  BankAdmin: { email: "admin@meridian.test", loginType: "STAFF" },
-  BranchManager: { email: "manager@meridian.test", loginType: "STAFF" },
-  Teller: { email: "teller@meridian.test", loginType: "STAFF" },
-  LoanOfficer: { email: "loan@meridian.test", loginType: "STAFF" },
-  Auditor: { email: "auditor@meridian.test", loginType: "STAFF" },
-  Customer: { email: "customer@meridian.test", loginType: "CUSTOMER" }
-};
-
 export default function SignInPage() {
   const router = useRouter();
   const [loginType, setLoginType] = useState<LoginType>("CUSTOMER");
-  const [identifier, setIdentifier] = useState("customer@meridian.test");
-  const [password, setPassword] = useState("Password123!");
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const demo = new URLSearchParams(window.location.search).get("demo") as Role | null;
-    if (!demo || !demoIdentities[demo]) return;
-
-    const identity = demoIdentities[demo];
-    setIdentifier(identity.email);
-    setLoginType(identity.loginType);
-  }, []);
-
   function selectLoginType(nextLoginType: LoginType) {
     setLoginType(nextLoginType);
-    setIdentifier(nextLoginType === "CUSTOMER" ? demoIdentities.Customer.email : demoIdentities.BankAdmin.email);
+    setError("");
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -118,7 +98,7 @@ export default function SignInPage() {
             <input
               id="identifier"
               className="field"
-              placeholder={isCustomer ? demoIdentities.Customer.email : demoIdentities.BankAdmin.email}
+              placeholder={isCustomer ? "customer@example.com" : "staff@example.com"}
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
             />
@@ -136,36 +116,14 @@ export default function SignInPage() {
           <Button type="submit" className={cn("w-full", isCustomer ? "bg-teal-600 hover:bg-teal-700" : "bg-slate-900 hover:bg-slate-800 focus:ring-slate-900/20")} disabled={loading}>
             {loading ? "Signing in..." : "Continue"}
           </Button>
-        </div>
-
-        <div className="mt-5 rounded-xl border border-line bg-slate-50 p-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold text-ink">Demo password</p>
-              <p className="mt-1 font-mono text-sm text-muted">Password123!</p>
-            </div>
-            <span className={cn("rounded-full px-3 py-1 text-xs font-semibold", isCustomer ? "bg-teal-50 text-teal-700" : "bg-slate-200 text-slate-700")}>
-              {isCustomer ? "Customer" : "Staff"}
-            </span>
-          </div>
-          <div className="mt-4 grid gap-2">
-            {Object.entries(demoIdentities)
-              .filter(([, identity]) => identity.loginType === loginType)
-              .map(([role, identity]) => (
-                <button
-                  key={role}
-                  type="button"
-                  className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-left text-xs text-muted transition hover:bg-white hover:text-teal-700"
-                  onClick={() => {
-                    setIdentifier(identity.email);
-                    setLoginType(identity.loginType);
-                  }}
-                >
-                  <span>{roleLabels[role as Role]}</span>
-                  <span className="font-mono">{identity.email}</span>
-                </button>
-              ))}
-          </div>
+          {isCustomer && (
+            <p className="text-center text-sm text-muted">
+              New customer?{" "}
+              <Link href="/auth/signup" className="font-semibold text-teal-700 hover:text-teal-800 hover:underline">
+                Create an account
+              </Link>
+            </p>
+          )}
         </div>
       </form>
     </main>

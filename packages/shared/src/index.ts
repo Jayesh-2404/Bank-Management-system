@@ -55,7 +55,20 @@ export type Permission = (typeof permissions)[number];
 
 export const rolePermissions: Record<Role, Permission[]> = {
   PlatformAdmin: [...permissions],
-  BankAdmin: permissions.filter((permission) => permission !== "own:accounts"),
+  BankAdmin: [
+    "banks:manage",
+    "staff:manage",
+    "branches:manage",
+    "customers:create",
+    "accounts:create",
+    "loans:manage",
+    "loans:approve",
+    "ledger:read",
+    "audit:read",
+    "reports:read",
+    "kyc:manage",
+    "act:on-behalf"
+  ],
   BranchManager: [
     "branches:manage",
     "customers:create",
@@ -118,6 +131,13 @@ export const loginSchema = z.object({
   password: z.string().min(8)
 });
 
+export const customerSignupSchema = z.object({
+  fullName: z.string().trim().min(2).max(120),
+  email: z.string().trim().email().transform((value) => value.toLowerCase()),
+  phone: z.string().trim().min(8).max(20),
+  password: z.string().min(8).max(128)
+});
+
 export const transferSchema = z.object({
   fromAccountId: z.string().uuid(),
   recipientType: z.enum(["HANDLE", "ACCOUNT_NUMBER", "IFSC_ACCOUNT"]),
@@ -153,6 +173,7 @@ export const limitChangeSchema = z.object({
 });
 
 export type TransferInput = z.infer<typeof transferSchema>;
+export type CustomerSignupInput = z.infer<typeof customerSignupSchema>;
 export type KycSubmitInput = z.infer<typeof kycSubmitSchema>;
 export type LoanApplicationInput = z.infer<typeof loanApplicationSchema>;
 export type LimitChangeInput = z.infer<typeof limitChangeSchema>;

@@ -18,22 +18,20 @@ import {
   WalletCards,
   type LucideIcon
 } from "lucide-react";
-import { roleLabels, type Role } from "@bank/shared";
 import { getStoredUser } from "@/lib/api";
 
-const staffRoles: { role: Role; description: string; email: string }[] = [
-  { role: "PlatformAdmin", description: "Platform-wide tenant and bank management", email: "platform@bancuip.test" },
-  { role: "BankAdmin", description: "Bank operations, products, reports, and controls", email: "admin@meridian.test" },
-  { role: "BranchManager", description: "Branch operations, approvals, and account oversight", email: "manager@meridian.test" },
-  { role: "Teller", description: "Cash counter operations and customer servicing", email: "teller@meridian.test" },
-  { role: "LoanOfficer", description: "Loan pipeline review and application handling", email: "loan@meridian.test" },
-  { role: "Auditor", description: "Read-only compliance and transaction monitoring", email: "auditor@meridian.test" }
+const staffRoles = [
+  { label: "Platform Admin", description: "Platform-wide tenant and bank management" },
+  { label: "Bank Admin", description: "Bank operations, products, reports, and controls" },
+  { label: "Branch Manager", description: "Branch operations, approvals, and account oversight" },
+  { label: "Teller", description: "Cash counter operations and customer servicing" },
+  { label: "Loan Officer", description: "Loan pipeline review and application handling" },
+  { label: "Auditor", description: "Read-only compliance and transaction monitoring" }
 ];
 
 const customerRole = {
-  role: "Customer" as Role,
-  description: "Personal account access, transfers, KYC, limits, and loans.",
-  email: "customer@meridian.test"
+  label: "Customer",
+  description: "Personal account access, transfers, KYC, limits, and loans."
 };
 
 const stats = [
@@ -192,22 +190,21 @@ export default function HomePage() {
       <section className="border-y border-line bg-white px-6 py-20 md:py-24">
         <div className="mx-auto max-w-6xl">
           <div className="mb-10">
-            <p className="text-sm font-semibold uppercase tracking-[0.14em] text-teal-600">Demo Access</p>
+            <p className="text-sm font-semibold uppercase tracking-[0.14em] text-teal-600">Secure Access</p>
             <h2 className="mt-3 text-3xl font-bold text-ink md:text-4xl">For Banking Staff</h2>
           </div>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {staffRoles.map((item) => (
               <Link
-                key={item.role}
-                href={`/auth/signin?demo=${item.role}`}
+                key={item.label}
+                href="/auth/signin"
                 className="group rounded-xl border border-line bg-white p-5 shadow-soft transition hover:border-teal-500 hover:shadow-panel"
               >
                 <div className="mb-3 flex items-center justify-between gap-4">
-                  <h3 className="text-base font-semibold text-ink">{roleLabels[item.role]}</h3>
+                  <h3 className="text-base font-semibold text-ink">{item.label}</h3>
                   <ArrowRight className="h-4 w-4 text-muted transition-colors group-hover:text-teal-600" />
                 </div>
                 <p className="min-h-10 text-sm leading-relaxed text-muted">{item.description}</p>
-                <p className="mt-4 font-mono text-xs text-teal-700">{item.email}</p>
               </Link>
             ))}
           </div>
@@ -217,17 +214,16 @@ export default function HomePage() {
       <section className="px-6 py-20 md:py-24">
         <div className="mx-auto max-w-6xl">
           <div className="mb-8">
-            <p className="text-sm font-semibold uppercase tracking-[0.14em] text-teal-600">Demo Access</p>
+            <p className="text-sm font-semibold uppercase tracking-[0.14em] text-teal-600">Secure Access</p>
             <h2 className="mt-3 text-3xl font-bold text-ink md:text-4xl">For Customers</h2>
           </div>
           <div className="rounded-2xl border border-teal-100 bg-teal-50 p-6 shadow-soft md:flex md:items-center md:justify-between md:gap-8">
             <div>
-              <p className="text-xl font-bold text-ink">{roleLabels[customerRole.role]}</p>
+              <p className="text-xl font-bold text-ink">{customerRole.label}</p>
               <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-700">{customerRole.description}</p>
-              <p className="mt-4 font-mono text-xs text-teal-800">{customerRole.email}</p>
             </div>
-            <Link href="/auth/signin?demo=Customer" className="mt-6 inline-flex items-center justify-center gap-2 rounded-lg bg-teal-600 px-6 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-teal-700 focus:outline-none focus:ring-4 focus:ring-teal-600/20 md:mt-0">
-              Try as Customer <ArrowRight className="h-4 w-4" />
+            <Link href="/auth/signin" className="mt-6 inline-flex items-center justify-center gap-2 rounded-lg bg-teal-600 px-6 py-2.5 text-sm font-semibold text-white shadow-soft transition hover:bg-teal-700 focus:outline-none focus:ring-4 focus:ring-teal-600/20 md:mt-0">
+              Customer Login <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
         </div>

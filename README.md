@@ -23,23 +23,14 @@ npm run dev:web
 
 Credentials and provider keys are intentionally read from `.env`; no secrets are committed.
 
-## Demo logins
+## Authentication
 
-Enable demo authentication with these values in `.env`:
+The API authenticates real database users with Argon2 password hashes and returns a signed JWT access token. Protected API requests must send the token in the `Authorization` header:
 
-```bash
-DEMO_AUTH_ENABLED="true"
-DEMO_AUTH_PASSWORD="Password123!"
+```http
+Authorization: Bearer <access-token>
 ```
 
-When demo auth is enabled, the API accepts only these hardcoded demo identities and the demo password, then loads the matching seeded user from the database so each role keeps its normal bank, branch, customer, and permission scope.
+Users are provisioned through controlled staff/admin flows or seed data. Public self-service signup is not enabled.
 
-| Role | Login type | Identifier | Password |
-| --- | --- | --- | --- |
-| Platform Admin | `STAFF` | `platform@bancuip.test` | `Password123!` |
-| Bank Admin | `STAFF` | `admin@meridian.test` | `Password123!` |
-| Branch Manager | `STAFF` | `manager@meridian.test` | `Password123!` |
-| Teller | `STAFF` | `teller@meridian.test` | `Password123!` |
-| Loan Officer | `STAFF` | `loan@meridian.test` | `Password123!` |
-| Auditor | `STAFF` | `auditor@meridian.test` | `Password123!` |
-| Customer | `CUSTOMER` | `customer@meridian.test` | `Password123!` |
+For local development, seed data creates initial users with hashed passwords. Use those provisioned credentials on the sign-in page instead of enabling demo-only authentication.
