@@ -101,15 +101,19 @@ async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
 }
 
 async function getUserFromDb(email: string) {
-  return prisma.user.findUnique({
-    where: { email: email.toLowerCase() },
-    include: {
-      customers: true,
-      roles: {
-        include: { bank: true, branch: true }
+  const result = await Promise.race([
+    prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+      include: {
+        customers: true,
+        roles: {
+          include: { bank: true, branch: true }
+        }
       }
-    }
-  });
+    }),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000))
+  ]);
+  return result;
 }
 
 async function buildPrincipal(user: Awaited<ReturnType<typeof getUserFromDb>>, loginType?: "STAFF" | "CUSTOMER"): Promise<AuthPrincipal | null> {

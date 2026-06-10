@@ -183,12 +183,17 @@ function StaffLoginPreview() {
           <p className="text-xs text-muted">Role-scoped operations for banking teams</p>
         </div>
       </div>
-      <div className="mt-4 grid grid-cols-3 gap-2">
-        {["Accounts", "Approvals", "Audit"].map((item) => (
-          <div key={item} className="rounded-xl bg-white px-3 py-2 text-center text-xs font-semibold text-slate-600 shadow-soft">
-            {item}
-          </div>
-        ))}
+      <div className="mt-3 rounded-xl bg-white p-3">
+        <p className="text-xs font-semibold text-muted">Demo credentials</p>
+        <div className="mt-2 space-y-1.5 text-xs text-ink">
+          <p><span className="inline-block w-24 font-medium text-muted">BankAdmin:</span> admin@meridian.test</p>
+          <p><span className="inline-block w-24 font-medium text-muted">BranchManager:</span> manager@meridian.test</p>
+          <p><span className="inline-block w-24 font-medium text-muted">Teller:</span> teller@meridian.test</p>
+          <p><span className="inline-block w-24 font-medium text-muted">LoanOfficer:</span> loan@meridian.test</p>
+          <p><span className="inline-block w-24 font-medium text-muted">Auditor:</span> auditor@meridian.test</p>
+          <p><span className="inline-block w-24 font-medium text-muted">PlatformAdmin:</span> platform@bancuip.test</p>
+        </div>
+        <p className="mt-2 text-xs text-muted">Password: <span className="font-semibold text-ink">Password123!</span></p>
       </div>
     </div>
   );
