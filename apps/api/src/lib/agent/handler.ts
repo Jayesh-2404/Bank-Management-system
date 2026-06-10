@@ -46,14 +46,31 @@ function parseFiltersFromKeywords(query: string): Partial<AgentIntent> {
   const q = query.toLowerCase();
   const result: Partial<AgentIntent> = { filters: [], limit: 20, explanation: `Processing: "${query}"` };
 
-  if (/customer|user|person|client/i.test(q)) result.intent = "SEARCH_CUSTOMERS";
-  else if (/account|balance|savings/i.test(q)) result.intent = "SEARCH_ACCOUNTS";
-  else if (/transaction|transfer|payment|deposit|withdrawal/i.test(q)) result.intent = "SEARCH_TRANSACTIONS";
-  else if (/kyc|verification|document|identity/i.test(q)) result.intent = "SEARCH_KYC";
-  else if (/loan|borrow|credit|mortgage/i.test(q)) result.intent = "SEARCH_LOANS";
-  else if (/count|how many|total/i.test(q)) result.intent = "GET_COUNT";
-  else if (/anomaly|suspicious|unusual|flag|fraud/i.test(q)) result.intent = "ANOMALY";
-  else result.intent = "GET_INSIGHTS";
+  if (/count|how many|total (customers|accounts|transactions|kyc|loans)/i.test(q)) {
+    result.intent = "GET_COUNT";
+    if (/customers/i.test(q)) result.explanation = "Counting customers";
+    else if (/accounts/i.test(q)) result.explanation = "Counting accounts";
+    else if (/transactions/i.test(q)) result.explanation = "Counting transactions";
+    else if (/kyc/i.test(q)) result.explanation = "Counting KYC cases";
+    else if (/loans/i.test(q)) result.explanation = "Counting loan applications";
+  } else if (/anomaly|suspicious|unusual|flag|fraud|red flag/i.test(q)) {
+    result.intent = "ANOMALY";
+  } else if (/customer|user|person|client/i.test(q)) {
+    result.intent = "SEARCH_CUSTOMERS";
+  } else if (/account|balance|savings|current/i.test(q)) {
+    result.intent = "SEARCH_ACCOUNTS";
+  } else if (/transaction|transfer|payment|deposit|withdrawal/i.test(q)) {
+    result.intent = "SEARCH_TRANSACTIONS";
+  } else if (/kyc|verification|document|identity/i.test(q)) {
+    result.intent = "SEARCH_KYC";
+  } else if (/loan|borrow|credit|mortgage|emi/i.test(q)) {
+    result.intent = "SEARCH_LOANS";
+  } else if (/insight|analytics|overview|dashboard|summary|show all/i.test(q)) {
+    result.intent = "GET_INSIGHTS";
+  } else {
+    result.intent = "GET_INSIGHTS";
+    result.explanation = "Showing overview of bank data";
+  }
 
   const statusMatch = q.match(/(pending|approved|rejected|active|frozen|closed|submitted|in.review|needs.more.info)/i);
   if (statusMatch) {
