@@ -218,7 +218,11 @@ app.get("/health", async () => ({
 }));
 
 app.post("/auth/signup/customer", async (request, reply) => {
-  const body = customerSignupSchema.parse(request.body);
+  const parsed = customerSignupSchema.safeParse(request.body);
+  if (!parsed.success) {
+    return reply.code(400).send({ error: "Validation failed", details: parsed.error.flatten().fieldErrors });
+  }
+  const body = parsed.data;
   const existingUser = await prisma.user.findUnique({ where: { email: body.email } });
   if (existingUser) {
     return reply.code(409).send({ error: "An account already exists for this email" });
