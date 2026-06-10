@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Bell,
+  Bot,
   Building2,
   ClipboardCheck,
   FileBarChart,
@@ -41,7 +42,8 @@ const navItems: Array<{ href: string; label: string; icon: LucideIcon; roles: Ro
   { href: "/reports", label: "Reports", icon: FileBarChart, roles: ["PlatformAdmin", "BankAdmin", "BranchManager", "Auditor"] },
   { href: "/ledger", label: "Ledger", icon: Landmark, roles: ["BankAdmin", "BranchManager", "Auditor"] },
   { href: "/audit", label: "Audit", icon: Logs, roles: ["PlatformAdmin", "BankAdmin", "BranchManager", "Auditor"] },
-  { href: "/admin", label: "Admin", icon: Building2, roles: ["PlatformAdmin", "BankAdmin"] }
+  { href: "/admin", label: "Admin", icon: Building2, roles: ["PlatformAdmin", "BankAdmin"] },
+  { href: "/admin/ai", label: "AI Agent", icon: Bot, roles: ["PlatformAdmin", "BankAdmin", "BranchManager", "Auditor"] }
 ];
 
 interface AppShellProps {

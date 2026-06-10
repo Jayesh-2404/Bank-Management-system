@@ -1826,6 +1826,8 @@ app.get("/reports/summary", { preHandler: async (request, reply) => {
   return { data: { dailyVolume, deposits, withdrawals, loanPipeline, exceptions } };
 });
 
+app.register((await import("./routes/agent.js")).agentRoutes);
+
 const port = Number(process.env.PORT ?? process.env.API_PORT ?? 4000);
 app.listen({ port, host: "0.0.0.0" }).catch((error) => {
   app.log.error(error);
